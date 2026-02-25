@@ -2,6 +2,7 @@
 import numpy as np
 import pandas as pd
 
+from utils.visual import plot_prediction
 from config import DataConfig, EventConfig, TrendConfig, SignalConfig, BacktestConfig
 from data.loader import load_kline_csv
 from data.preprocess import align_features, compute_log_return
@@ -10,8 +11,8 @@ from research.select_threshold import choose_threshold_by_quantile, fit_hawkes_f
 from research.sensitivity_alpha import alpha_sensitivity_study
 
 def main():
-    data_cfg = DataConfig(csv_path="your.csv", symbol="BCHUSDT", interval="1d")
-    event_cfg = EventConfig(quantiles=(0.95, 0.97, 0.99), signed_events=True)
+    data_cfg = DataConfig(csv_path="market_info/BTCUSDT_1d_Binance.csv", symbol="BTCUSDT", interval="1d")
+    event_cfg = EventConfig(quantiles=(0.5, 0.8, 0.99), signed_events=True)
     trend_cfg = TrendConfig(arima_order=(1,0,1), garch_pq=(1,1))
     sig_cfg = SignalConfig(alpha_grid=(0.0, 0.1, 0.2, 0.5, 1, 2, 5, 10), position_cap=1.0)
     bt_cfg = BacktestConfig()
@@ -20,13 +21,14 @@ def main():
     df = align_features(df)
 
     close = df["close"]
-    r = compute_log_return(close)
+    r = compute_log_return(close) # with the first value filled as 0, so r.index == close.index
 
-    # 1) 趋势/波动预测（先 rolling naive，后面替换成真正 ARIMA+GARCH rolling fit）
+    # 1) Trend forecasting with ARIMA-GARCH, mean and volatility predictions
     trend = ArimaGarchModel(arima_order=trend_cfg.arima_order, garch_pq=trend_cfg.garch_pq)
-    pred = trend.rolling_forecast(r, window=500)  # index=ts
+    pred = trend.rolling_forecast(r, window=30)  # index=ts, prediction is for i+1
     mu = pred["mu"]
     sigma = pred["sigma"]
+    plot_prediction(close, r, pred)
 
     # 2) 第一轮：阈值候选 + Hawkes 拟合
     for q in event_cfg.quantiles:

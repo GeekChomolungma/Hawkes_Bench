@@ -3,7 +3,7 @@ import pandas as pd
 
 def compute_log_return(close: pd.Series) -> pd.Series:
     r = np.log(close).diff()
-    return r.dropna()
+    return r.fillna(0)
 
 def align_features(df: pd.DataFrame) -> pd.DataFrame:
     # filter out non-final rows if 'isfinal' column exists
