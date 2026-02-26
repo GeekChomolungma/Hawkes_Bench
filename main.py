@@ -2,11 +2,12 @@
 import numpy as np
 import pandas as pd
 
-from utils.visual import plot_prediction
+from utils.visual import plot_prediction, plot_hawkes_lambda_suite
 from config import DataConfig, EventConfig, TrendConfig, SignalConfig, BacktestConfig
 from data.loader import load_kline_csv
 from data.preprocess import align_features, compute_log_return
 from models.arima_garch import ArimaGarchModel
+from models.hawkes import intensity_series_on_index
 from research.select_threshold import choose_threshold_by_quantile, fit_hawkes_for_threshold
 from research.sensitivity_alpha import alpha_sensitivity_study
 
@@ -26,21 +27,41 @@ def main():
 
     # 1) Trend forecasting with ARIMA-GARCH, mean and volatility predictions
     trend = ArimaGarchModel(arima_order=trend_cfg.arima_order, garch_pq=trend_cfg.garch_pq)
-    pred = trend.rolling_forecast(r, window=30)  # index=ts, prediction is for i+1
+    pred = trend.rolling_forecast(r, window=30)  # index=ts, which is i, but its prediction is for i+1
     mu = pred["mu"]
     sigma = pred["sigma"]
     plot_prediction(close, r, pred)
 
-    # 2) 第一轮：阈值候选 + Hawkes 拟合
+    # 2) threshold selection for events and Hawkes modeling
     for q in event_cfg.quantiles:
         tau = choose_threshold_by_quantile(r.loc[mu.index], q=q)
         hawkes_models = fit_hawkes_for_threshold(r.loc[mu.index], tau=tau, signed=event_cfg.signed_events)
         print(f"[q={q}] tau={tau:.6f} models={list(hawkes_models.keys())}")
 
-        # 这里先用占位：lambda_t = 常数 or 你从模型算 intensity
-        # 实际你会用 hawkes_models 输出每个时刻的 lambda_t，再合成（pos/neg可加权）
-        lam = pd.Series(0.1, index=mu.index)  # TODO: replace with real intensity series
+        origin = r.loc[mu.index].index[0]
+        lam_parts = []
+        for k, m in hawkes_models.items():
+            if m is None:
+                continue
+            lam_k = intensity_series_on_index(m, index=mu.index, origin=origin, unit="D")
+            lam_parts.append(lam_k)
 
+        if len(lam_parts) == 0:
+            lam = pd.Series(0.0, index=mu.index)
+        else:
+            # simplest: sum pos + neg
+            lam = sum(lam_parts)
+        
+        plot_hawkes_lambda_suite(
+            close=close,
+            returns=r,
+            pred=pred,
+            lam=lam,
+            tau=tau,
+            q=q,
+            signed=event_cfg.signed_events,
+        )
+                    
         # 3) 第二轮：alpha SA
         res = alpha_sensitivity_study(
             close=close.loc[mu.index],
