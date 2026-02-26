@@ -20,8 +20,9 @@ def main():
     df = load_kline_csv(data_cfg.csv_path)
     df = align_features(df)
 
-    close = df["close"]
-    r = compute_log_return(close) # with the first value filled as 0, so r.index == close.index
+    # close inherits df's datetime index automatically
+    close = df["close"]  # index is datetime from df
+    r = compute_log_return(close)  # r.index == close.index (first value filled as 0)
 
     # 1) Trend forecasting with ARIMA-GARCH, mean and volatility predictions
     trend = ArimaGarchModel(arima_order=trend_cfg.arima_order, garch_pq=trend_cfg.garch_pq)
