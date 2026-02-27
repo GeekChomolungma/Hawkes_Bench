@@ -23,7 +23,7 @@ class TrendConfig:
 @dataclass
 class SignalConfig:
     # The second round: alpha values for SA candidates
-    alpha_grid: tuple[float, ...] = (0.0, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0)
+    alpha_risk_grid: tuple[float, ...] = (0.0, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 10.0)
     position_cap: float = 1.0
 
 @dataclass

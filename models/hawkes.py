@@ -42,16 +42,23 @@ class HawkesIntensityModel:
         params_log: unconstrained, mapped by exp to positive params:
           mu = exp(x0), alpha = exp(x1), beta = exp(x2)
         """
-        mu = float(np.exp(params_log[0]))
-        alpha = float(np.exp(params_log[1]))
-        beta = float(np.exp(params_log[2]))
+        x = np.clip(params_log, -20.0, 20.0)
+        mu = float(np.exp(x[0]))
+        alpha = float(np.exp(x[1]))
+        beta = float(np.exp(x[2]))
 
-        # Penalty to discourage explosive processes (branching ratio >= 1)
-        # branching ratio n = alpha/beta (for exp kernel)
+        # ---- stability / explosiveness penalty ----
         n = alpha / (beta + 1e-12)
+        if (not np.isfinite(n)) or (n < 0):
+            return 1e12
+
         penalty = 0.0
         if n >= 0.999:
-            penalty += 1e6 * (n - 0.999) ** 2
+            d = n - 0.999
+            if (not np.isfinite(d)) or (d > 1e6):
+                return 1e12
+            d = min(d, 1e6)
+            penalty += 1e6 * (d * d)
 
         # Recurrence for g_i = sum_{j<i} exp(-beta*(t_i - t_j))
         # g_0 = 0
@@ -219,6 +226,15 @@ def to_relative_time(event_index: pd.DatetimeIndex, origin: pd.Timestamp, unit="
     raise ValueError("unit must be 'D' or 's'")
 
 
+def _rel_time_grid(index: pd.DatetimeIndex, origin: pd.Timestamp, unit="D") -> np.ndarray:
+    dt = (index - origin)
+    if unit == "D":
+        return dt.total_seconds().astype(float) / 86400.0
+    if unit == "s":
+        return dt.total_seconds().astype(float)
+    raise ValueError("unit must be 'D' or 's'")
+
+
 def intensity_series_on_index(
     model: HawkesIntensityModel,
     index: pd.DatetimeIndex,
@@ -239,3 +255,82 @@ def intensity_series_on_index(
 
     lam = model.intensity_on_grid(np.asarray(t_grid, dtype=float))
     return pd.Series(lam, index=index)
+
+
+def lambda_online_fixed_params(
+    index: pd.DatetimeIndex,
+    origin: pd.Timestamp,
+    params: HawkesExpParams,
+    event_mask: np.ndarray,
+    unit: str = "D",
+) -> pd.Series:
+    """
+    Online scan of lambda(t_i) on a bar index with FIXED params.
+    event_mask[i] indicates whether an event occurs at index[i] (at that timestamp).
+
+    Convention:
+      lambda(t_i) uses events strictly BEFORE t_i.
+      so event at t_i is added AFTER computing lambda(t_i).
+    """
+    tg = _rel_time_grid(index, origin=origin, unit=unit)
+    mu, alpha, beta = params.mu, params.alpha, params.beta
+
+    lam = np.zeros(len(tg), dtype=float)
+    S = 0.0  # excitation state
+
+    lam[0] = mu + alpha * S
+    # add event at i=0 after computing lambda(0)
+    if event_mask[0]:
+        S += 1.0
+
+    for i in range(1, len(tg)):
+        dt = tg[i] - tg[i - 1]
+        if dt < 0:
+            raise ValueError("index must be increasing.")
+        if dt > 0:
+            S *= np.exp(-beta * dt)
+
+        lam[i] = mu + alpha * S
+
+        # after evaluating lambda at t_i, incorporate event at t_i
+        if event_mask[i]:
+            S += 1.0
+
+    return pd.Series(lam, index=index)
+
+
+def hawkes_lambda_suite_fixed_theta(
+    r: pd.Series,
+    index: pd.DatetimeIndex,
+    origin: pd.Timestamp,
+    tau: float,
+    theta_by_key: Dict[str, HawkesExpParams],
+    signed: bool = True,
+    unit: str = "D",
+) -> pd.Series:
+    """
+    Compute lambda on `index` using fixed theta (params), online.
+    - signed=True: expects keys {"pos","neg"} in theta_by_key
+    - signed=False: expects key {"abs"}
+    """
+    r_aligned = r.reindex(index).astype(float)
+
+    if signed:
+        pos_mask = (r_aligned > +tau).to_numpy()
+        neg_mask = (r_aligned < -tau).to_numpy()
+
+        lam_pos = pd.Series(np.zeros(len(index), dtype=float), index=index)
+        lam_neg = pd.Series(np.zeros(len(index), dtype=float), index=index)
+
+        if "pos" in theta_by_key and theta_by_key["pos"] is not None:
+            lam_pos = lambda_online_fixed_params(index, origin, theta_by_key["pos"], pos_mask, unit=unit)
+        if "neg" in theta_by_key and theta_by_key["neg"] is not None:
+            lam_neg = lambda_online_fixed_params(index, origin, theta_by_key["neg"], neg_mask, unit=unit)
+
+        return lam_pos + lam_neg
+    else:
+        abs_mask = (np.abs(r_aligned) > tau).to_numpy()
+        if "abs" not in theta_by_key or theta_by_key["abs"] is None:
+            return pd.Series(np.zeros(len(index), dtype=float), index=index)
+        lam_abs = lambda_online_fixed_params(index, origin, theta_by_key["abs"], abs_mask, unit=unit)
+        return lam_abs
