@@ -1,199 +1,152 @@
+from __future__ import annotations
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-def plot_prediction(close, returns, pred):
-    # close and returns are indexed by all datetime
-    # pred is indexed by decision times (subset of close/returns index)
-    pred_df = pred.copy()
 
-    # dicision time
-    # pred index is decision time t_i
-    pred_df["close_t"] = close.loc[pred_df.index]
-
-    # pred_for_ts is the timestamp of the predicted return (t_{i+1})
-    pred_df["real_return_next"] = returns.loc[pred_df["pred_for_ts"]].values
-
-    # predicted next price = close_t * exp(predicted return) at decision time t_i for predicted return at t_{i+1}
-    pred_df["pred_price_next"] = pred_df["close_t"] * np.exp(pred_df["mu"])
-
-    # real next price
-    pred_df["real_price_next"] = close.loc[pred_df["pred_for_ts"]].values
-
-    # ==============================
-    # Figure 1：price gt vs predicted next price
-    # ==============================
-
-    plt.figure(figsize=(14,6))
-
-    plt.plot(close, label="Close Price", alpha=0.6)
-
-    plt.plot(
-        pred_df["pred_for_ts"],
-        pred_df["pred_price_next"],
-        label="Predicted Next Price (ARIMA)",
-        linewidth=2
-    )
-
-    plt.title("Price vs ARIMA Predicted Next Price")
-    plt.legend()
-    plt.grid()
-    plt.show()
-
-
-    # ==============================
-    # Figure 2：log return gt vs predicted return
-    # ==============================
-
-    plt.figure(figsize=(14,6))
-
-    plt.plot(
-        pred_df.index,
-        pred_df["mu"],
-        label="Predicted Return",
-        alpha=0.8
-    )
-
-    plt.plot(
-        pred_df.index,
-        pred_df["real_return_next"],
-        label="Real Next Return",
-        alpha=0.6
-    )
-
-    plt.title("Predicted vs Real Next Returns")
-    plt.legend()
-    plt.grid()
-    plt.show()
-
-
-    # ==============================
-    # Figure 3：volatility (sigma) over time
-    # ==============================
-
-    plt.figure(figsize=(14,4))
-
-    plt.plot(pred_df.index, pred_df["sigma"], label="Predicted Volatility (GARCH)")
-    plt.title("Predicted Volatility")
-    plt.legend()
-    plt.grid()
-    plt.show()
-
-def plot_hawkes_lambda_suite(
+def plot_forecast_layer(
     close: pd.Series,
+    forecast_df: pd.DataFrame,
+    title: str = "Close vs Forecast",
+    out_path: str | None = None,
+) -> None:
+    """
+    Visualize close price against forecast projection at decision times.
+    Expected columns in forecast_df: ts, close_t, and either price_pred_median
+    or mu_pred (which will be mapped to price projection).
+    Optional columns: price_pred_lo, price_pred_hi
+    """
+    df = forecast_df.copy()
+    if "ts" in df.columns:
+        df = df.set_index("ts")
+    df.index = pd.to_datetime(df.index, utc=True)
+
+    if "price_pred_median" not in df.columns:
+        if "mu_pred" not in df.columns:
+            raise ValueError("forecast_df requires price_pred_median or mu_pred")
+        
+        # close ground-truth at decision time t
+        df["close_t"] = close.reindex(df.index).astype(float)
+
+        # ATTENTION: 
+        # Using the predicted return rate in conjunction with the true value of the previous close to reconstruct a predicted close value for the next moment presents a problem: 
+        # when the return rate is very small, the model's close will be too tight, making the overall prediction appear very accurate.
+        df["price_pred_median"] = df["close_t"] * np.exp(df["mu_pred"].astype(float))
+
+    plt.figure(figsize=(14, 6))
+    plt.plot(close.index, close.values, label="Close (GT)", alpha=0.65)
+    plt.plot(df.index, df["price_pred_median"].values, label="Pred Price (median)", linewidth=2)
+
+    if "price_pred_lo" in df.columns and "price_pred_hi" in df.columns:
+        lo = df["price_pred_lo"].astype(float)
+        hi = df["price_pred_hi"].astype(float)
+        plt.fill_between(df.index, lo, hi, alpha=0.2, label="Pred Band")
+
+    plt.title(title)
+    plt.grid(True)
+    plt.legend()
+    plt.tight_layout()
+    if out_path:
+        plt.savefig(out_path, dpi=200)
+    plt.show()
+
+
+def plot_return_target_layer(
     returns: pd.Series,
-    pred: pd.DataFrame,     # indexed by decision time, contains pred_for_ts
-    lam: pd.Series,         # indexed by decision time (same as mu.index)
-    tau: float,
-    q: float,
-    signed: bool = True,
-    smooth_span: int = 20,  # EWMA smoothing for readability
-):
+    forecast_df: pd.DataFrame,
+    title: str = "Return Forecast vs Next Return (GT)",
+    out_path: str | None = None,
+) -> None:
     """
-    Suite of plots for Hawkes intensity (lambda) that are thesis-friendly.
-
-    Alignment:
-      - pred.index: decision time t_i
-      - pred["pred_for_ts"]: target time t_{i+1}
-      - lam is aligned to decision time t_i (no look-ahead)
-      - returns is aligned to full timeline; returns[t] is r_t
+    Compare model target directly:
+    - predicted next-bar return (mu_pred or q50)
+    - realized next-bar return r_{t+1}
     """
+    df = forecast_df.copy()
+    if "ts" in df.columns:
+        df = df.set_index("ts")
+    df.index = pd.to_datetime(df.index, utc=True)
 
-    # ----- align everything onto decision time index -----
-    idx = pred.index
-    df = pd.DataFrame(index=idx).copy()
-    df["lam"] = lam.reindex(idx).astype(float)
-    df["lam_smooth"] = df["lam"].ewm(span=smooth_span, adjust=False).mean()
+    pred_col = "mu_pred" if "mu_pred" in df.columns else ("q50" if "q50" in df.columns else None)
+    if pred_col is None:
+        raise ValueError("forecast_df requires mu_pred or q50 for return target plot")
 
-    df["close"] = close.reindex(idx).astype(float)
+    pred = df[pred_col].astype(float)
+    real_next = returns.shift(-1).reindex(df.index).astype(float)
+    valid = pred.notna() & real_next.notna()
+    pred = pred[valid]
+    real_next = real_next[valid]
 
-    # realized next return at t_{i+1}
-    df["pred_for_ts"] = pred["pred_for_ts"].values
-    df["r_next"] = returns.reindex(df["pred_for_ts"]).values
-
-    # event indicators for next step (for "predictive" diagnostics)
-    if signed:
-        df["event_next_pos"] = (df["r_next"] > +tau).astype(int)
-        df["event_next_neg"] = (df["r_next"] < -tau).astype(int)
-        df["event_next_abs"] = ((np.abs(df["r_next"]) > tau)).astype(int)
-    else:
-        df["event_next_abs"] = ((np.abs(df["r_next"]) > tau)).astype(int)
-
-    # =========================
-    # Plot A: Price + Lambda (two panels)
-    # =========================
-    fig = plt.figure(figsize=(14, 8))
+    fig = plt.figure(figsize=(15, 9))
     ax1 = plt.subplot(2, 1, 1)
-    ax1.plot(df.index, df["close"])
-    ax1.set_title(f"Close Price (q={q}, tau={tau:.6f})")
-    ax1.grid(True)
+    ax2 = plt.subplot(2, 1, 2)
 
-    ax2 = plt.subplot(2, 1, 2, sharex=ax1)
-    ax2.plot(df.index, df["lam"], alpha=0.35, label="lambda (raw)")
-    ax2.plot(df.index, df["lam_smooth"], linewidth=2, label=f"lambda (EWMA span={smooth_span})")
-    ax2.set_title("Hawkes Conditional Intensity (Risk Temperature)")
+    ax1.plot(pred.index, pred.values, label=f"Pred Next Return ({pred_col})", linewidth=1.8, alpha=0.9)
+    ax1.plot(real_next.index, real_next.values, label="Real Next Return (GT)", linewidth=1.4, alpha=0.75)
+    ax1.set_title(title)
+    ax1.grid(True)
+    ax1.legend()
+
+    ax2.scatter(pred.values, real_next.values, s=14, alpha=0.55, label="points")
+    lo = float(min(pred.min(), real_next.min()))
+    hi = float(max(pred.max(), real_next.max()))
+    ax2.plot([lo, hi], [lo, hi], linestyle="--", linewidth=1.4, label="45° line")
+    ax2.set_xlabel("Predicted next return")
+    ax2.set_ylabel("Real next return")
     ax2.grid(True)
     ax2.legend()
+
     plt.tight_layout()
+    if out_path:
+        plt.savefig(out_path, dpi=200)
     plt.show()
 
-    # =========================
-    # Plot B: Lambda with next-step extreme events markers
-    # (thesis-friendly: shows whether lambda spikes before events)
-    # =========================
-    plt.figure(figsize=(14, 5))
-    plt.plot(df.index, df["lam_smooth"], linewidth=2, label="lambda (smoothed)")
-    # mark next-step abs extreme events
-    ev_idx = df.index[df["event_next_abs"] == 1]
-    plt.scatter(ev_idx, df.loc[ev_idx, "lam_smooth"], marker="x", s=30, label="next-step extreme event")
-    plt.title(f"Lambda and Next-Step Extreme Events (q={q}, |r_next|>tau)")
-    plt.grid(True)
-    plt.legend()
+
+def plot_backtest_layer(
+    close: pd.Series,
+    bt: pd.DataFrame,
+    title: str = "Backtest (Price + Buy/Sell + Equity)",
+    out_path: str | None = None,
+) -> None:
+    """
+    Trading-view-like buy/sell markers based on position changes.
+    bt must include: pos, dpos, equity and share the same index as decision times.
+    equity is the strategy equity index, starting at 1.0.
+    """
+    df = bt.copy()
+    idx = df.index
+    px = close.reindex(idx).astype(float)
+
+    dpos = df["pos"].diff().fillna(0.0)
+    buy_idx = idx[dpos > 0]
+    sell_idx = idx[dpos < 0]
+
+    fig = plt.figure(figsize=(15, 9))
+    ax1 = plt.subplot(2, 1, 1)
+    ax2 = plt.subplot(2, 1, 2, sharex=ax1)
+
+    ax1.plot(idx, px.values, label="Close", color="tab:blue", linewidth=1.4)
+    if len(buy_idx) > 0:
+        ax1.scatter(buy_idx, px.reindex(buy_idx).values, marker="^", s=50, label="Buy", color="tab:green")
+    if len(sell_idx) > 0:
+        ax1.scatter(sell_idx, px.reindex(sell_idx).values, marker="v", s=50, label="Sell", color="tab:red")
+
+    ax1.set_title(title)
+    ax1.grid(True)
+    ax1.legend()
+
+    ax2.plot(idx, df["equity"].values, label="Equity", color="tab:orange", linewidth=1.8)
+    buy_hold = (px / (px.iloc[0] + 1e-12)).astype(float)
+    ax2.plot(idx, buy_hold.values, label="Buy & Hold", color="tab:gray", linewidth=1.4, linestyle="--")
+    ax2.grid(True)
+    ax2.legend()
+
     plt.tight_layout()
+    if out_path:
+        plt.savefig(out_path, dpi=200)
     plt.show()
 
-    # =========================
-    # Plot C: "Does lambda predict large moves?" (binning / calibration-like plot)
-    # bucket lambda into quantiles and show event rate
-    # =========================
-    try:
-        df["lam_bucket"] = pd.qcut(df["lam"], q=10, duplicates="drop")
-        grp = df.groupby("lam_bucket")
-        event_rate = grp["event_next_abs"].mean()
-        lam_mid = grp["lam"].mean()
-
-        plt.figure(figsize=(10, 5))
-        plt.plot(lam_mid.values, event_rate.values, marker="o")
-        plt.title("Event Rate vs Lambda Level (Binned)")
-        plt.xlabel("Average lambda in bucket")
-        plt.ylabel("P(next-step extreme event)")
-        plt.grid(True)
-        plt.tight_layout()
-        plt.show()
-    except Exception as e:
-        print(f"[plot_hawkes_lambda_suite] qcut failed: {e}")
-
-    # =========================
-    # Plot D: Compare distributions of lambda conditioned on next-step event
-    # =========================
-    lam_event = df.loc[df["event_next_abs"] == 1, "lam"]
-    lam_noev = df.loc[df["event_next_abs"] == 0, "lam"]
-
-    plt.figure(figsize=(12, 4))
-    plt.hist(lam_noev.values, bins=50, alpha=0.6, label="no event next-step")
-    plt.hist(lam_event.values, bins=50, alpha=0.6, label="event next-step")
-    plt.title("Lambda Distribution: next-step event vs no-event")
-    plt.grid(True)
-    plt.legend()
-    plt.tight_layout()
-    plt.show()
-
-    # Optional: print simple stats for paper
-    if len(lam_event) > 0:
-        print(f"[q={q}] tau={tau:.6f}  "
-              f"lambda mean(event)={lam_event.mean():.4f}, mean(no-event)={lam_noev.mean():.4f}, "
-              f"event_rate={df['event_next_abs'].mean():.4f}")
-        
 
 def plot_hawkes_lambda_splits(
     close: pd.Series,
@@ -205,133 +158,44 @@ def plot_hawkes_lambda_splits(
     smooth_span: int = 20,
     figsize=(16, 9),
 ):
-    """
-    Plot Price + Hawkes lambda on two panels, in ONE big figure, with
-    train/val/test segments highlighted in different colors.
-
-    Requirements/assumptions:
-      - close and lam are full-series indexed by datetime (or at least cover all split indices).
-      - idx_train/idx_val/idx_test are chronological, non-overlapping segments.
-      - No shuffle; segments are purely visualized.
-    """
-
-    # --- sanitize / align base index ---
-    # Use union of provided split indices as the visualization timeline
     idx_all = pd.DatetimeIndex([])
-
     for seg in (idx_train, idx_val, idx_test):
-        if seg is None:
-            continue
-        idx_all = idx_all.union(pd.DatetimeIndex(seg))
-
+        if seg is not None:
+            idx_all = idx_all.union(pd.DatetimeIndex(seg))
     if len(idx_all) == 0:
-        raise ValueError("Empty split indices: nothing to plot.")
+        raise ValueError("Empty split indices.")
 
     idx_all = idx_all.sort_values()
-
-    df = pd.DataFrame(index=idx_all).copy()
+    df = pd.DataFrame(index=idx_all)
     df["close"] = close.reindex(idx_all).astype(float)
     df["lam"] = lam.reindex(idx_all).astype(float)
     df["lam_smooth"] = df["lam"].ewm(span=smooth_span, adjust=False).mean()
 
-    # --- colors for splits ---
-    # (matplotlib default palette-ish, but explicit for consistency)
-    C_TRAIN = "tab:blue"
-    C_VAL = "tab:orange"
-    C_TEST = "tab:green"
+    c_train, c_val, c_test = "tab:blue", "tab:orange", "tab:green"
 
-    def _plot_segment(ax, x, y, seg_idx, color, label, **kwargs):
-        seg_idx = pd.DatetimeIndex(seg_idx)
-        if len(seg_idx) == 0:
+    def _plot_segment(ax, y: pd.Series, seg_idx: pd.DatetimeIndex, color: str, label: str, **kwargs):
+        seg = pd.DatetimeIndex(seg_idx)
+        if len(seg) == 0:
             return
-        yy = y.reindex(seg_idx)
-        ax.plot(seg_idx, yy.values, color=color, label=label, **kwargs)
+        ys = y.reindex(seg)
+        ax.plot(seg, ys.values, color=color, label=label, **kwargs)
 
-    # --- figure layout ---
     fig = plt.figure(figsize=figsize)
     ax1 = plt.subplot(2, 1, 1)
     ax2 = plt.subplot(2, 1, 2, sharex=ax1)
 
-    # =========================
-    # Panel 1: Price
-    # =========================
-    _plot_segment(ax1, df.index, df["close"], idx_train, C_TRAIN, "train", linewidth=1.6)
-    _plot_segment(ax1, df.index, df["close"], idx_val, C_VAL, "val", linewidth=1.6)
-    _plot_segment(ax1, df.index, df["close"], idx_test, C_TEST, "test", linewidth=1.6)
-
+    _plot_segment(ax1, df["close"], idx_train, c_train, "train")
+    _plot_segment(ax1, df["close"], idx_val, c_val, "val")
+    _plot_segment(ax1, df["close"], idx_test, c_test, "test")
     ax1.set_title(title)
-    ax1.set_ylabel("Close")
     ax1.grid(True)
     ax1.legend()
 
-    # =========================
-    # Panel 2: Lambda
-    # =========================
-    # raw (lighter) + smooth (thicker) for each split
-    _plot_segment(ax2, df.index, df["lam"], idx_train, C_TRAIN, "lambda raw (train)", alpha=0.25, linewidth=1.2)
-    _plot_segment(ax2, df.index, df["lam"], idx_val, C_VAL, "lambda raw (val)", alpha=0.25, linewidth=1.2)
-    _plot_segment(ax2, df.index, df["lam"], idx_test, C_TEST, "lambda raw (test)", alpha=0.25, linewidth=1.2)
-
-    _plot_segment(ax2, df.index, df["lam_smooth"], idx_train, C_TRAIN, f"lambda EWMA(span={smooth_span}) (train)", linewidth=2.2)
-    _plot_segment(ax2, df.index, df["lam_smooth"], idx_val, C_VAL, f"lambda EWMA(span={smooth_span}) (val)", linewidth=2.2)
-    _plot_segment(ax2, df.index, df["lam_smooth"], idx_test, C_TEST, f"lambda EWMA(span={smooth_span}) (test)", linewidth=2.2)
-
-    ax2.set_title("Hawkes Conditional Intensity (Lambda)")
-    ax2.set_ylabel("lambda")
+    _plot_segment(ax2, df["lam_smooth"], idx_train, c_train, "lambda train")
+    _plot_segment(ax2, df["lam_smooth"], idx_val, c_val, "lambda val")
+    _plot_segment(ax2, df["lam_smooth"], idx_test, c_test, "lambda test")
     ax2.grid(True)
-    ax2.legend(ncol=2)
+    ax2.legend()
 
     plt.tight_layout()
-    plt.show()
-    plt.savefig("hawkes_lambda_splits.png", dpi=300)
-    
-
-def plot_alpha_sensitivity(res: pd.DataFrame, title: str = "Alpha Risk Sensitivity (Train)"):
-    """
-    res: output of alpha_sensitivity_study
-    """
-    if res is None or len(res) == 0:
-        raise ValueError("Empty SA result.")
-
-    # for plotting, sort by alpha_risk on x-axis
-    df = res.sort_values("alpha_risk").reset_index(drop=True)
-
-    # identify best by sharpe (the first row in res is best by our sorting)
-    best = res.iloc[0]
-    best_a = float(best["alpha_risk"])
-
-    fig = plt.figure(figsize=(16, 10))
-
-    def _plot_metric(ax, ycol, ylabel):
-        ax.plot(df["alpha_risk"].values, df[ycol].values, marker="o")
-        ax.axvline(best_a, linestyle="--", linewidth=1.5)
-        ax.set_xlabel("alpha_risk")
-        ax.set_ylabel(ylabel)
-        ax.grid(True)
-
-    ax1 = plt.subplot(2, 3, 1)
-    _plot_metric(ax1, "sharpe", "Sharpe")
-
-    ax2 = plt.subplot(2, 3, 2)
-    _plot_metric(ax2, "calmar", "Calmar")
-
-    ax3 = plt.subplot(2, 3, 3)
-    _plot_metric(ax3, "total_return", "Total Return")
-
-    ax4 = plt.subplot(2, 3, 4)
-    _plot_metric(ax4, "max_drawdown", "Max Drawdown")
-
-    ax5 = plt.subplot(2, 3, 5)
-    _plot_metric(ax5, "turnover", "Turnover (mean |Δpos|)")
-
-    ax6 = plt.subplot(2, 3, 6)
-    _plot_metric(ax6, "sortino", "Sortino")
-
-    fig.suptitle(
-        f"{title}\nBest alpha_risk={best_a} | Sharpe={best['sharpe']:.3f} | Calmar={best['calmar']:.3f}",
-        y=0.98,
-        fontsize=14,
-    )
-
-    plt.tight_layout(rect=[0, 0, 1, 0.94])
     plt.show()

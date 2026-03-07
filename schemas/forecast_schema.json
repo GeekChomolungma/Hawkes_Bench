@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ForecastProtocol",
+  "type": "object",
+  "required": ["ts", "symbol", "horizon", "close_t"],
+  "properties": {
+    "ts": {"type": "string", "description": "Decision timestamp in UTC"},
+    "symbol": {"type": "string"},
+    "horizon": {"type": "integer", "minimum": 1},
+    "close_t": {"type": "number"},
+    "mu_pred": {"type": "number"},
+    "sigma_pred": {"type": "number"},
+    "q05": {"type": "number"},
+    "q10": {"type": "number"},
+    "q25": {"type": "number"},
+    "q50": {"type": "number"},
+    "q75": {"type": "number"},
+    "q90": {"type": "number"},
+    "q95": {"type": "number"},
+    "model_name": {"type": "string"},
+    "model_version": {"type": "string"},
+    "inference_run_id": {"type": "string"}
+  }
+}
