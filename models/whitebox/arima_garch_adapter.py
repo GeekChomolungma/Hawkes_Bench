@@ -22,19 +22,19 @@ class WhiteBoxForecaster:
         self.model = ArimaGarchModel(arima_order=cfg.arima_order, garch_pq=cfg.garch_pq)
 
     def forecast_frame(self, close: pd.Series, returns: pd.Series, symbol: str, horizon: int = 1) -> pd.DataFrame:
-        pred = self.model.rolling_forecast(returns, window=self.cfg.rolling_window)
+        pred = self.model.rolling_forecast(returns, window=self.cfg.rolling_window) # "pred_for_ts" is the timestamp of the next step forecasting for, but it is stored at the current step t.
 
-        df = pred.rename(columns={"mu": "mu_pred", "sigma": "sigma_pred"}).copy()
-        df.index.name = "ts"
+        df = pred.rename(columns={"mu": "mu_pred", "sigma": "sigma_pred"}).copy() # pred index is "ts", decision time. 
+        df.index.name = "ts" # make sure index is named "ts" for downstream processing
         df["symbol"] = symbol
         df["horizon"] = int(horizon)
 
-        # ground-truth close at decision time t
+        # ground-truth close at decision time, ts
         df["close_t"] = close.reindex(df.index).astype(float)
 
         z = float(self.cfg.z_score)
 
-        # return-space band
+        # return-space band, for next step, aligned with the return target at "pred_for_ts" but at decision time ts
         df["ret_pred_lo"] = df["mu_pred"] - z * df["sigma_pred"]
         df["ret_pred_hi"] = df["mu_pred"] + z * df["sigma_pred"]
 

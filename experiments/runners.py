@@ -22,11 +22,11 @@ def evaluate_forecast_frame(
     metrics_out_path: str,
     rows_out_path: str | None = None,
 ) -> dict:
-    df = forecast_df.copy()
+    df = forecast_df.copy() # pred_for_ts
     if "ts" in df.columns:
         df = df.set_index("ts").sort_index()
 
-    y_true = make_next_return_target(returns=returns, decision_index=df.index) # returns at decision times
+    y_true = make_next_return_target(returns=returns, decision_index=df.index) # next-bar return at decision times
     df = df.reindex(y_true.index)
 
     quantile_preds = {}
@@ -35,7 +35,7 @@ def evaluate_forecast_frame(
             quantile_preds[q] = df[col]
 
     mu = df["mu_pred"] if "mu_pred" in df.columns else None
-    metrics = compute_forecast_metrics(y_true=y_true, mu_pred=mu, quantile_preds=quantile_preds or None)
+    metrics = compute_forecast_metrics(y_true=y_true, mu_pred=mu, quantile_preds=quantile_preds or None) # y_true -- r_next vs.  "pred_for_ts" mu_pred
     save_metrics(metrics, metrics_out_path)
 
     if rows_out_path:
@@ -66,11 +66,11 @@ def run_strategy_backtest(
     if "ts" in df.columns:
         df = df.set_index("ts").sort_index()
 
-    df = attach_native_fields(df)
+    df = attach_native_fields(df) # [ts, pred_for_ts, mu_pred, sigma_pred, native_risk...], the "native_risk" are binding to "pred_for_ts", default to "sigma_pred"
     idx = df.index.intersection(close.index)
     df = df.reindex(idx)
 
-    native_risk = df["native_risk"].ffill().bfill()
+    native_risk = df["native_risk"].ffill().bfill() # index is decision tims -- ts.
     if use_hawkes:
         risk = apply_hawkes_risk_scaling(native_risk=native_risk, lam=lam.reindex(idx), alpha_risk=alpha_risk)
     else:

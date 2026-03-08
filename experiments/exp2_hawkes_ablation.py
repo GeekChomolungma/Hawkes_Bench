@@ -80,10 +80,11 @@ def run_exp2_hawkes_ablation(
 
     df_train, df_val, df_test = time_split_df(df, ratios=(0.7, 0.1, 0.2))
 
-    white = WhiteBoxForecaster(cfg=wb_cfg).forecast_frame(close=close, returns=returns, symbol=data_cfg.symbol)
+    # close/returns/white, they share the same decision time index, ts.
+    white = WhiteBoxForecaster(cfg=wb_cfg).forecast_frame(close=close, returns=returns, symbol=data_cfg.symbol) # pred_for_ts for the next step return, but stored at t. -- decision time
     white = white.set_index("ts").sort_index()
 
-    idx_all = white.index
+    idx_all = white.index # decision time index of the forecast frame.
     idx_train = idx_all[idx_all <= df_train.index[-1]]
     idx_val = idx_all[(idx_all > df_train.index[-1]) & (idx_all <= df_val.index[-1])]
     idx_test = idx_all[idx_all > df_val.index[-1]]

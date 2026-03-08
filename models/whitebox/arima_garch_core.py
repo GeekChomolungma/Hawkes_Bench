@@ -133,7 +133,7 @@ class ArimaGarchModel:
         - the first return (at t0) is kept as 0.0 (not NaN)
 
         At decision time i:
-        - we fit on returns[i-window+1 : i] (inclusive of r_i)
+        - we fit on returns[i-window : i] (inclusive of r_i)
         - we forecast next-step return r_{i+1}
         - we store forecast at timestamp t_i (because you act at i for i+1)
 
@@ -151,7 +151,7 @@ class ArimaGarchModel:
         out = []
         # i is the decision-time index; we need i+1 to exist, so i <= len(r)-2
         for i in range(window, len(r) - 1):
-            hist = r.iloc[i - window : i + 1]  # includes r_i
+            hist = r.iloc[i - window : i + 1]  # includes r_i -- the return on time i
             ts_decision = r.index[i]
             ts_pred_for = r.index[i + 1]
 
@@ -167,7 +167,7 @@ class ArimaGarchModel:
 
             out.append((ts_decision, mu, sigma, ts_pred_for))
 
-        df = pd.DataFrame(out, columns=["ts", "mu", "sigma", "pred_for_ts"]).set_index("ts")
+        df = pd.DataFrame(out, columns=["ts", "mu", "sigma", "pred_for_ts"]).set_index("ts") # "mu", "sigma" are forecasts for the next step return at ts_pred_for, but stored at ts because that's the decision time
 
         # Optional helpers: annualized versions (useful for paper plots)
         if self.annualization_factor is not None:

@@ -65,9 +65,9 @@ def main() -> None:
     Path(out_cfg.table_dir).mkdir(parents=True, exist_ok=True)
     Path(out_cfg.figure_dir).mkdir(parents=True, exist_ok=True)
 
-    print("[RUN] Experiment 1: Forecast evaluation")
-    exp1 = run_exp1_forecast_eval(data_cfg=data_cfg, wb_cfg=wb_cfg, out_cfg=out_cfg, ext_cfg=ext_cfg)
-    print(exp1)
+    # print("[RUN] Experiment 1: Forecast evaluation")
+    # exp1 = run_exp1_forecast_eval(data_cfg=data_cfg, wb_cfg=wb_cfg, out_cfg=out_cfg, ext_cfg=ext_cfg)
+    # print(exp1)
 
     print("[RUN] Experiment 2: Hawkes ablation backtest")
     exp2 = run_exp2_hawkes_ablation(

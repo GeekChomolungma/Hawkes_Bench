@@ -12,7 +12,7 @@ def plot_forecast_layer(
     out_path: str | None = None,
 ) -> None:
     """
-    Visualize close price against forecast projection at decision times.
+    Visualize close price against forecast projection.
     Expected columns in forecast_df: ts, close_t, and either price_pred_median
     or mu_pred (which will be mapped to price projection).
     Optional columns: price_pred_lo, price_pred_hi
@@ -25,23 +25,34 @@ def plot_forecast_layer(
     if "price_pred_median" not in df.columns:
         if "mu_pred" not in df.columns:
             raise ValueError("forecast_df requires price_pred_median or mu_pred")
-        
-        # close ground-truth at decision time t
         df["close_t"] = close.reindex(df.index).astype(float)
-
-        # ATTENTION: 
-        # Using the predicted return rate in conjunction with the true value of the previous close to reconstruct a predicted close value for the next moment presents a problem: 
-        # when the return rate is very small, the model's close will be too tight, making the overall prediction appear very accurate.
         df["price_pred_median"] = df["close_t"] * np.exp(df["mu_pred"].astype(float))
+
+    # Align predicted prices to target timestamp (t+1), not decision timestamp (t).
+    if "pred_for_ts" in df.columns:
+        pred_x = pd.to_datetime(df["pred_for_ts"], utc=True, errors="coerce")
+    else:
+        # Fallback: infer t+1 by shifting along the close index.
+        pos = close.index.get_indexer(df.index)
+        next_pos = pos + 1
+        valid_shift = (pos >= 0) & (next_pos < len(close.index))
+        pred_x = pd.Series(pd.NaT, index=df.index, dtype="datetime64[ns, UTC]")
+        pred_x.loc[valid_shift] = close.index[next_pos[valid_shift]]
+    valid_pred = pred_x.notna()
 
     plt.figure(figsize=(14, 6))
     plt.plot(close.index, close.values, label="Close (GT)", alpha=0.65)
-    plt.plot(df.index, df["price_pred_median"].values, label="Pred Price (median)", linewidth=2)
+    plt.plot(
+        pred_x[valid_pred],
+        df.loc[valid_pred, "price_pred_median"].values,
+        label="Pred Price (median, t+1)",
+        linewidth=2,
+    )
 
     if "price_pred_lo" in df.columns and "price_pred_hi" in df.columns:
-        lo = df["price_pred_lo"].astype(float)
-        hi = df["price_pred_hi"].astype(float)
-        plt.fill_between(df.index, lo, hi, alpha=0.2, label="Pred Band")
+        lo = df.loc[valid_pred, "price_pred_lo"].astype(float)
+        hi = df.loc[valid_pred, "price_pred_hi"].astype(float)
+        plt.fill_between(pred_x[valid_pred], lo, hi, alpha=0.2, label="Pred Band (t+1)")
 
     plt.title(title)
     plt.grid(True)
@@ -57,6 +68,7 @@ def plot_return_target_layer(
     forecast_df: pd.DataFrame,
     title: str = "Return Forecast vs Next Return (GT)",
     out_path: str | None = None,
+    z_score: float = 1.96,
 ) -> None:
     """
     Compare model target directly:
@@ -74,16 +86,46 @@ def plot_return_target_layer(
 
     pred = df[pred_col].astype(float)
     real_next = returns.shift(-1).reindex(df.index).astype(float)
-    valid = pred.notna() & real_next.notna()
+
+    # Align to target timestamp (t+1). Fallback to +1 bar inference if pred_for_ts is absent.
+    if "pred_for_ts" in df.columns:
+        target_x = pd.to_datetime(df["pred_for_ts"], utc=True, errors="coerce")
+    else:
+        pos = returns.index.get_indexer(df.index)
+        next_pos = pos + 1
+        valid_shift = (pos >= 0) & (next_pos < len(returns.index))
+        target_x = pd.Series(pd.NaT, index=df.index, dtype="datetime64[ns, UTC]")
+        target_x.loc[valid_shift] = returns.index[next_pos[valid_shift]]
+
+    # Return prediction band from white-box GARCH output
+    if "ret_pred_lo" in df.columns and "ret_pred_hi" in df.columns:
+        band_lo = df["ret_pred_lo"].astype(float)
+        band_hi = df["ret_pred_hi"].astype(float)
+    elif "mu_pred" in df.columns and "sigma_pred" in df.columns:
+        mu = df["mu_pred"].astype(float)
+        sigma = df["sigma_pred"].astype(float)
+        band_lo = mu - float(z_score) * sigma
+        band_hi = mu + float(z_score) * sigma
+    else:
+        band_lo = None
+        band_hi = None
+
+    valid = pred.notna() & real_next.notna() & target_x.notna()
     pred = pred[valid]
     real_next = real_next[valid]
+    target_x = target_x[valid]
+    if band_lo is not None and band_hi is not None:
+        band_lo = band_lo[valid]
+        band_hi = band_hi[valid]
 
     fig = plt.figure(figsize=(15, 9))
     ax1 = plt.subplot(2, 1, 1)
     ax2 = plt.subplot(2, 1, 2)
 
-    ax1.plot(pred.index, pred.values, label=f"Pred Next Return ({pred_col})", linewidth=1.8, alpha=0.9)
-    ax1.plot(real_next.index, real_next.values, label="Real Next Return (GT)", linewidth=1.4, alpha=0.75)
+    ax1.plot(target_x, pred.values, label=f"Pred Next Return ({pred_col})", linewidth=1.8, alpha=0.9)
+    ax1.plot(target_x, real_next.values, label="Real Next Return (GT)", linewidth=1.4, alpha=0.75)
+    if band_lo is not None and band_hi is not None:
+        ax1.fill_between(target_x, band_lo.values, band_hi.values, alpha=0.18, label=f"Pred Band (+/-{z_score:.2f}sigma)")
     ax1.set_title(title)
     ax1.grid(True)
     ax1.legend()
@@ -91,7 +133,7 @@ def plot_return_target_layer(
     ax2.scatter(pred.values, real_next.values, s=14, alpha=0.55, label="points")
     lo = float(min(pred.min(), real_next.min()))
     hi = float(max(pred.max(), real_next.max()))
-    ax2.plot([lo, hi], [lo, hi], linestyle="--", linewidth=1.4, label="45° line")
+    ax2.plot([lo, hi], [lo, hi], linestyle="--", linewidth=1.4, label="45-degree line")
     ax2.set_xlabel("Predicted next return")
     ax2.set_ylabel("Real next return")
     ax2.grid(True)

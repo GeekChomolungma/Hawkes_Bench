@@ -170,6 +170,7 @@ Relevant figure:
 Example:
 
 ![White-box close reconstruction](reports/figures/exp1_whitebox_forecast_BTCUSDT_1d.png)
+![White-box close reconstruction details](reports/figures/showcase_1.png)
 
 The white-box model predicts next-bar return, then reconstructs next-bar price from current observed close:
 - `pred_price_next = close_t * exp(pred_return)`

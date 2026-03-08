@@ -37,7 +37,7 @@ def run_exp1_forecast_eval(
     df = load_kline_csv(data_cfg.csv_path)
     df = align_features(df)
     close = df["close"].astype(float)
-    returns = compute_log_return(close)
+    returns = compute_log_return(close) # decision-time bar Increase/decrease rate, r_t = log(close_t) - log(close_{t-1}), on the t.
     df_train, df_val, df_test = time_split_df(df, ratios=(0.7, 0.1, 0.2))
     meta = parse_market_from_csv_path(
         csv_path=data_cfg.csv_path,
@@ -47,14 +47,14 @@ def run_exp1_forecast_eval(
     mk = meta["key"]
     mt = meta["title_label"]
 
-    white = WhiteBoxForecaster(cfg=wb_cfg).forecast_frame(close=close, returns=returns, symbol=data_cfg.symbol)
+    white = WhiteBoxForecaster(cfg=wb_cfg).forecast_frame(close=close, returns=returns, symbol=data_cfg.symbol) # pred_for_ts for the next step return, but stored at t. -- decision time
     white_idx = white.set_index("ts").index
     idx_train = white_idx[white_idx <= df_train.index[-1]]
     idx_val = white_idx[(white_idx > df_train.index[-1]) & (white_idx <= df_val.index[-1])]
     idx_test = white_idx[white_idx > df_val.index[-1]]
 
     white_metrics_all = evaluate_forecast_frame(
-        forecast_df=white,
+        forecast_df=white, # pred_for_ts
         returns=returns,
         metrics_out_path=f"{out_cfg.table_dir}/exp1_whitebox_forecast_metrics_all_{mk}.json",
         rows_out_path=f"{out_cfg.table_dir}/exp1_whitebox_forecast_rows_all_{mk}.csv",
