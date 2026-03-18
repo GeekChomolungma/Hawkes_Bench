@@ -9,6 +9,7 @@ from config import (
     HawkesConfig,
     OutputConfig,
     SignalConfig,
+    SplitConfig,
     WhiteBoxConfig,
 )
 from experiments.exp1_forecast_eval import run_exp1_forecast_eval
@@ -25,7 +26,15 @@ def main() -> None:
     - Experiment 1: forecast-layer evaluation
     - Experiment 2: Hawkes ablation on trading layer
     """
-    data_cfg = DataConfig(csv_path="market_info/BTCUSDT_1d_Binance.csv", symbol="BTCUSDT", interval="1d")
+    data_cfg = DataConfig(
+        csv_path="market_info/BTCUSDT_1d_Binance.csv",
+        symbol="BTCUSDT",
+        interval="1d",
+        split=SplitConfig(
+            train_end="2022-12-31",
+            val_end="2024-12-31",
+        ),
+    )
     wb_cfg = WhiteBoxConfig(arima_order=(1, 0, 1), garch_pq=(1, 1), rolling_window=30, z_score=1.96)
     hawkes_cfg = HawkesConfig(quantile=0.9, signed_events=True, alpha_risk=1.0, time_unit="auto")
     sig_cfg = SignalConfig(position_cap=1.0)
@@ -57,17 +66,17 @@ def main() -> None:
 
     # black-box is connected through external table protocol
     ext_cfg = ExternalForecastConfig(
-        enabled=False,
-        path="data/external_forecasts/blackbox_predictions_template.csv",
+        enabled=True,
+        path="data/external_forecasts/zeroshot_BTCUSDT_1d_logreturn_predictions_decision_aligned.csv",
         column_map={},
     )
 
     Path(out_cfg.table_dir).mkdir(parents=True, exist_ok=True)
     Path(out_cfg.figure_dir).mkdir(parents=True, exist_ok=True)
 
-    # print("[RUN] Experiment 1: Forecast evaluation")
-    # exp1 = run_exp1_forecast_eval(data_cfg=data_cfg, wb_cfg=wb_cfg, out_cfg=out_cfg, ext_cfg=ext_cfg)
-    # print(exp1)
+    print("[RUN] Experiment 1: Forecast evaluation")
+    exp1 = run_exp1_forecast_eval(data_cfg=data_cfg, wb_cfg=wb_cfg, out_cfg=out_cfg, ext_cfg=ext_cfg)
+    print(exp1)
 
     print("[RUN] Experiment 2: Hawkes ablation backtest")
     exp2 = run_exp2_hawkes_ablation(

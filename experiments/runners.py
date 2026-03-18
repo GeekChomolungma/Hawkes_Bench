@@ -19,29 +19,52 @@ def make_next_return_target(returns: pd.Series, decision_index: pd.DatetimeIndex
 def evaluate_forecast_frame(
     forecast_df: pd.DataFrame,
     returns: pd.Series,
-    metrics_out_path: str,
+    metrics_out_path: str | None,
     rows_out_path: str | None = None,
 ) -> dict:
-    df = forecast_df.copy() # pred_for_ts
+    df = forecast_df.copy()  # pred_for_ts
     if "ts" in df.columns:
         df = df.set_index("ts").sort_index()
 
-    y_true = make_next_return_target(returns=returns, decision_index=df.index) # next-bar return at decision times
+    # Prefer explicit y_true in external black-box rows if provided,
+    # otherwise derive from market returns by next-step alignment.
+    if "y_true_next" in df.columns:
+        y_true = df["y_true_next"].astype(float).dropna()
+    else:
+        y_true = make_next_return_target(returns=returns, decision_index=df.index)
     df = df.reindex(y_true.index)
 
     quantile_preds = {}
-    for q, col in ((0.05, "q05"), (0.10, "q10"), (0.25, "q25"), (0.50, "q50"), (0.75, "q75"), (0.90, "q90"), (0.95, "q95")):
+    for q, col in (
+        (0.05, "q05"),
+        (0.10, "q10"),
+        (0.25, "q25"),
+        (0.50, "q50"),
+        (0.75, "q75"),
+        (0.90, "q90"),
+        (0.95, "q95"),
+    ):
         if col in df.columns:
             quantile_preds[q] = df[col]
 
     mu = df["mu_pred"] if "mu_pred" in df.columns else None
-    metrics = compute_forecast_metrics(y_true=y_true, mu_pred=mu, quantile_preds=quantile_preds or None) # y_true -- r_next vs.  "pred_for_ts" mu_pred
-    save_metrics(metrics, metrics_out_path)
+    sigma = df["sigma_pred"] if "sigma_pred" in df.columns else None
+
+    metrics = compute_forecast_metrics(
+        y_true=y_true,
+        mu_pred=mu,
+        sigma_pred=sigma,
+        quantile_preds=quantile_preds or None,
+    )
+    if metrics_out_path:
+        save_metrics(metrics, metrics_out_path)
 
     if rows_out_path:
         out = pd.DataFrame({"y_true": y_true})
         if mu is not None:
             out["mu_pred"] = mu.reindex(y_true.index)
+        if sigma is not None:
+            out["sigma_pred"] = sigma.reindex(y_true.index)
         for q, s in quantile_preds.items():
             out[f"q{int(q*100):02d}"] = s.reindex(y_true.index)
         save_dataframe(out.reset_index(), rows_out_path, index=False)
@@ -66,11 +89,11 @@ def run_strategy_backtest(
     if "ts" in df.columns:
         df = df.set_index("ts").sort_index()
 
-    df = attach_native_fields(df) # [ts, pred_for_ts, mu_pred, sigma_pred, native_risk...], the "native_risk" are binding to "pred_for_ts", default to "sigma_pred"
+    df = attach_native_fields(df)  # [ts, pred_for_ts, mu_pred, sigma_pred, native_risk...], the "native_risk" are binding to "pred_for_ts", default to "sigma_pred"
     idx = df.index.intersection(close.index)
     df = df.reindex(idx)
 
-    native_risk = df["native_risk"].ffill().bfill() # index is decision tims -- ts.
+    native_risk = df["native_risk"].ffill().bfill()  # index is decision tims -- ts.
     if use_hawkes:
         risk = apply_hawkes_risk_scaling(native_risk=native_risk, lam=lam.reindex(idx), alpha_risk=alpha_risk)
     else:

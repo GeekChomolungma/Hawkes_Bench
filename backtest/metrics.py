@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+
 import numpy as np
 import pandas as pd
 
@@ -71,12 +73,34 @@ def compute_pinball_loss(y_true: pd.Series, y_pred_q: pd.Series, q: float) -> fl
     return float(np.nanmean(loss))
 
 
+def _compute_picp(y_true: pd.Series, lower: pd.Series, upper: pd.Series) -> float:
+    y = y_true.astype(float)
+    lo = lower.reindex(y.index).astype(float)
+    hi = upper.reindex(y.index).astype(float)
+    hit = (y >= lo) & (y <= hi)
+    return float(hit.mean())
+
+
+def _compute_crps_gaussian(y_true: pd.Series, mu_pred: pd.Series, sigma_pred: pd.Series) -> float:
+    y = y_true.astype(float)
+    mu = mu_pred.reindex(y.index).astype(float)
+    sig = sigma_pred.reindex(y.index).astype(float).clip(lower=1e-12)
+
+    z = ((y - mu) / sig).to_numpy(dtype=float)
+    phi = np.exp(-0.5 * z * z) / math.sqrt(2.0 * math.pi)
+    Phi = 0.5 * (1.0 + np.vectorize(math.erf)(z / math.sqrt(2.0)))
+
+    crps = sig.to_numpy(dtype=float) * (z * (2.0 * Phi - 1.0) + 2.0 * phi - 1.0 / math.sqrt(math.pi))
+    return float(np.nanmean(crps))
+
+
 def compute_forecast_metrics(
     y_true: pd.Series,
     mu_pred: pd.Series | None = None,
+    sigma_pred: pd.Series | None = None,
     quantile_preds: dict[float, pd.Series] | None = None,
 ) -> dict:
-    y = y_true.astype(float) # returns
+    y = y_true.astype(float)
     out: dict[str, float] = {}
 
     if mu_pred is not None:
@@ -86,8 +110,8 @@ def compute_forecast_metrics(
         out["mae"] = float(np.nanmean(np.abs(err)))
         out["rmse"] = float(np.sqrt(out["mse"]))
 
+    q_losses = []
     if quantile_preds:
-        q_losses = []
         for q, s in quantile_preds.items():
             aligned = s.reindex(y.index)
             pl = compute_pinball_loss(y, aligned, q=q)
@@ -95,6 +119,22 @@ def compute_forecast_metrics(
             q_losses.append(pl)
         if q_losses:
             out["pinball_mean"] = float(np.nanmean(q_losses))
+            # CRPS approximation from quantile scores.
+            out["crps_quantile_approx"] = float(2.0 * np.nanmean(q_losses))
+
+    if sigma_pred is not None and mu_pred is not None:
+        out["crps_gaussian"] = _compute_crps_gaussian(y_true=y, mu_pred=mu_pred, sigma_pred=sigma_pred)
+
+    if quantile_preds and 0.10 in quantile_preds and 0.90 in quantile_preds:
+        out["picp_80"] = _compute_picp(y_true=y, lower=quantile_preds[0.10], upper=quantile_preds[0.90])
+    elif sigma_pred is not None and mu_pred is not None:
+        # 80% interval for Gaussian: z ~= 1.28155
+        z80 = 1.2815515655446004
+        mu = mu_pred.reindex(y.index).astype(float)
+        sig = sigma_pred.reindex(y.index).astype(float).clip(lower=1e-12)
+        lower = mu - z80 * sig
+        upper = mu + z80 * sig
+        out["picp_80"] = _compute_picp(y_true=y, lower=lower, upper=upper)
 
     return out
 

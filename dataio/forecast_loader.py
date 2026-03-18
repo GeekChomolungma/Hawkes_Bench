@@ -41,10 +41,28 @@ def standardize_forecast_df(
 
     if "ts" not in df.columns:
         # fallback for common names
-        for alt in ("datetime", "timestamp", "date", "time"):
+        for alt in ("ts_decision", "datetime", "timestamp", "date", "time"):
             if alt in df.columns:
                 df = df.rename(columns={alt: "ts"})
                 break
+
+    # zeroshot black-box conventions
+    alias_pairs = (
+        ("pred_ret_t+1_mean", "mu_pred"),
+        ("pred_ret_t+1_q0.1", "q10"),
+        ("pred_ret_t+1_q0.2", "q20"),
+        ("pred_ret_t+1_q0.5", "q50"),
+        ("pred_ret_t+1_q0.8", "q80"),
+        ("pred_ret_t+1_q0.9", "q90"),
+        ("y_true_ret_t+1", "y_true_next"),
+    )
+    for src, dst in alias_pairs:
+        if src in df.columns and dst not in df.columns:
+            df = df.rename(columns={src: dst})
+
+    # "pred_ret_t+1_mean" in current zeroshot files is actually median (q50).
+    if "q50" not in df.columns and "mu_pred" in df.columns:
+        df["q50"] = df["mu_pred"]
 
     if "close_t" not in df.columns:
         for alt in ("close", "close_price", "price"):
@@ -71,11 +89,14 @@ def standardize_forecast_df(
         "sigma_pred",
         "q05",
         "q10",
+        "q20",
         "q25",
         "q50",
         "q75",
+        "q80",
         "q90",
         "q95",
+        "y_true_next",
     ]
     for c in numeric_candidates:
         if c in df.columns:

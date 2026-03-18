@@ -2,10 +2,20 @@ from dataclasses import dataclass, field
 
 
 @dataclass
+class SplitConfig:
+    # Inclusive boundary: decision ts <= train_end belongs to train.
+    train_end: str | None = None
+    # Inclusive boundary: decision ts <= val_end belongs to val.
+    # test is (val_end, +inf). If omitted, test is (train_end, +inf).
+    val_end: str | None = None
+
+
+@dataclass
 class DataConfig:
     csv_path: str = "market_info/BTCUSDT_1d_Binance.csv"
     symbol: str = "BTCUSDT"
     interval: str = "1d"
+    split: SplitConfig = field(default_factory=SplitConfig)
 
 
 @dataclass
@@ -50,3 +60,6 @@ class ExternalForecastConfig:
 class OutputConfig:
     table_dir: str = "reports/tables"
     figure_dir: str = "reports/figures"
+    # Keep only core exp1 artifacts by default.
+    # If True, also dump intermediate frames/rows/all-split metric files.
+    exp1_save_debug_tables: bool = False

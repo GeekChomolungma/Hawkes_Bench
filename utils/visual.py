@@ -5,54 +5,94 @@ import numpy as np
 import pandas as pd
 
 
+def _get_target_x(index: pd.DatetimeIndex, anchor: pd.Series | pd.DataFrame, pred_for_ts: pd.Series | None = None) -> pd.Series:
+    if pred_for_ts is not None:
+        x = pd.to_datetime(pred_for_ts, utc=True, errors="coerce")
+        return pd.Series(x, index=index)
+
+    anchor_idx = anchor.index
+    pos = anchor_idx.get_indexer(index)
+    next_pos = pos + 1
+    valid_shift = (pos >= 0) & (next_pos < len(anchor_idx))
+    out = pd.Series(pd.NaT, index=index, dtype="datetime64[ns, UTC]")
+    out.loc[valid_shift] = anchor_idx[next_pos[valid_shift]]
+    return out
+
+
 def plot_forecast_layer(
     close: pd.Series,
     forecast_df: pd.DataFrame,
     title: str = "Close vs Forecast",
     out_path: str | None = None,
+    band_low_col: str | None = None,
+    band_high_col: str | None = None,
+    band_label: str | None = None,
+    z_score: float = 1.96,
 ) -> None:
     """
-    Visualize close price against forecast projection.
-    Expected columns in forecast_df: ts, close_t, and either price_pred_median
-    or mu_pred (which will be mapped to price projection).
-    Optional columns: price_pred_lo, price_pred_hi
+    Visualize close price against forecast projection on target timestamp (t+1).
+
+    Default behavior:
+    - median line uses price_pred_median if available, else close_t * exp(mu_pred)
+    - band uses price_pred_lo/hi if available, else mu_pred +/- z*sigma_pred
+
+    Custom quantile band (for black-box):
+    - pass band_low_col and band_high_col as return-space quantiles (e.g. q10/q90)
+      and they will be mapped to price by close_t * exp(return_quantile).
     """
     df = forecast_df.copy()
     if "ts" in df.columns:
         df = df.set_index("ts")
     df.index = pd.to_datetime(df.index, utc=True)
 
+    close_aligned = close.reindex(df.index).astype(float)
+    df["close_t"] = close_aligned
+
     if "price_pred_median" not in df.columns:
         if "mu_pred" not in df.columns:
             raise ValueError("forecast_df requires price_pred_median or mu_pred")
-        df["close_t"] = close.reindex(df.index).astype(float)
         df["price_pred_median"] = df["close_t"] * np.exp(df["mu_pred"].astype(float))
 
-    # Align predicted prices to target timestamp (t+1), not decision timestamp (t).
-    if "pred_for_ts" in df.columns:
-        pred_x = pd.to_datetime(df["pred_for_ts"], utc=True, errors="coerce")
-    else:
-        # Fallback: infer t+1 by shifting along the close index.
-        pos = close.index.get_indexer(df.index)
-        next_pos = pos + 1
-        valid_shift = (pos >= 0) & (next_pos < len(close.index))
-        pred_x = pd.Series(pd.NaT, index=df.index, dtype="datetime64[ns, UTC]")
-        pred_x.loc[valid_shift] = close.index[next_pos[valid_shift]]
-    valid_pred = pred_x.notna()
+    target_x = _get_target_x(
+        index=df.index,
+        anchor=close,
+        pred_for_ts=df["pred_for_ts"] if "pred_for_ts" in df.columns else None,
+    )
 
+    lo_price = None
+    hi_price = None
+    if band_low_col and band_high_col and band_low_col in df.columns and band_high_col in df.columns:
+        # custom return-space quantiles -> price-space band
+        lo_price = df["close_t"] * np.exp(df[band_low_col].astype(float))
+        hi_price = df["close_t"] * np.exp(df[band_high_col].astype(float))
+        band_name = band_label or f"Pred Band ({band_low_col}-{band_high_col}, t+1)"
+    elif "price_pred_lo" in df.columns and "price_pred_hi" in df.columns:
+        lo_price = df["price_pred_lo"].astype(float)
+        hi_price = df["price_pred_hi"].astype(float)
+        band_name = band_label or "Pred Band (t+1)"
+    elif "mu_pred" in df.columns and "sigma_pred" in df.columns:
+        mu = df["mu_pred"].astype(float)
+        sigma = df["sigma_pred"].astype(float)
+        lo_price = df["close_t"] * np.exp(mu - float(z_score) * sigma)
+        hi_price = df["close_t"] * np.exp(mu + float(z_score) * sigma)
+        band_name = band_label or f"Pred Band (+/-{z_score:.2f}sigma, t+1)"
+    else:
+        band_name = band_label or "Pred Band"
+
+    valid = target_x.notna() & df["price_pred_median"].notna()
     plt.figure(figsize=(14, 6))
     plt.plot(close.index, close.values, label="Close (GT)", alpha=0.65)
     plt.plot(
-        pred_x[valid_pred],
-        df.loc[valid_pred, "price_pred_median"].values,
+        target_x[valid],
+        df.loc[valid, "price_pred_median"].values,
         label="Pred Price (median, t+1)",
         linewidth=2,
     )
 
-    if "price_pred_lo" in df.columns and "price_pred_hi" in df.columns:
-        lo = df.loc[valid_pred, "price_pred_lo"].astype(float)
-        hi = df.loc[valid_pred, "price_pred_hi"].astype(float)
-        plt.fill_between(pred_x[valid_pred], lo, hi, alpha=0.2, label="Pred Band (t+1)")
+    if lo_price is not None and hi_price is not None:
+        lo = lo_price[valid].astype(float)
+        hi = hi_price[valid].astype(float)
+        plt.fill_between(target_x[valid], lo, hi, alpha=0.2, label=band_name)
 
     plt.title(title)
     plt.grid(True)
@@ -69,11 +109,17 @@ def plot_return_target_layer(
     title: str = "Return Forecast vs Next Return (GT)",
     out_path: str | None = None,
     z_score: float = 1.96,
+    band_low_col: str | None = None,
+    band_high_col: str | None = None,
+    band_label: str | None = None,
 ) -> None:
     """
     Compare model target directly:
     - predicted next-bar return (mu_pred or q50)
     - realized next-bar return r_{t+1}
+
+    Custom band option for black-box: pass band_low_col / band_high_col
+    such as q10 / q90.
     """
     df = forecast_df.copy()
     if "ts" in df.columns:
@@ -87,28 +133,30 @@ def plot_return_target_layer(
     pred = df[pred_col].astype(float)
     real_next = returns.shift(-1).reindex(df.index).astype(float)
 
-    # Align to target timestamp (t+1). Fallback to +1 bar inference if pred_for_ts is absent.
-    if "pred_for_ts" in df.columns:
-        target_x = pd.to_datetime(df["pred_for_ts"], utc=True, errors="coerce")
-    else:
-        pos = returns.index.get_indexer(df.index)
-        next_pos = pos + 1
-        valid_shift = (pos >= 0) & (next_pos < len(returns.index))
-        target_x = pd.Series(pd.NaT, index=df.index, dtype="datetime64[ns, UTC]")
-        target_x.loc[valid_shift] = returns.index[next_pos[valid_shift]]
+    target_x = _get_target_x(
+        index=df.index,
+        anchor=returns,
+        pred_for_ts=df["pred_for_ts"] if "pred_for_ts" in df.columns else None,
+    )
 
-    # Return prediction band from white-box GARCH output
-    if "ret_pred_lo" in df.columns and "ret_pred_hi" in df.columns:
+    if band_low_col and band_high_col and band_low_col in df.columns and band_high_col in df.columns:
+        band_lo = df[band_low_col].astype(float)
+        band_hi = df[band_high_col].astype(float)
+        resolved_band_label = band_label or f"Pred Band ({band_low_col}-{band_high_col})"
+    elif "ret_pred_lo" in df.columns and "ret_pred_hi" in df.columns:
         band_lo = df["ret_pred_lo"].astype(float)
         band_hi = df["ret_pred_hi"].astype(float)
+        resolved_band_label = band_label or "Pred Band"
     elif "mu_pred" in df.columns and "sigma_pred" in df.columns:
         mu = df["mu_pred"].astype(float)
         sigma = df["sigma_pred"].astype(float)
         band_lo = mu - float(z_score) * sigma
         band_hi = mu + float(z_score) * sigma
+        resolved_band_label = band_label or f"Pred Band (+/-{z_score:.2f}sigma)"
     else:
         band_lo = None
         band_hi = None
+        resolved_band_label = band_label or "Pred Band"
 
     valid = pred.notna() & real_next.notna() & target_x.notna()
     pred = pred[valid]
@@ -125,7 +173,7 @@ def plot_return_target_layer(
     ax1.plot(target_x, pred.values, label=f"Pred Next Return ({pred_col})", linewidth=1.8, alpha=0.9)
     ax1.plot(target_x, real_next.values, label="Real Next Return (GT)", linewidth=1.4, alpha=0.75)
     if band_lo is not None and band_hi is not None:
-        ax1.fill_between(target_x, band_lo.values, band_hi.values, alpha=0.18, label=f"Pred Band (+/-{z_score:.2f}sigma)")
+        ax1.fill_between(target_x, band_lo.values, band_hi.values, alpha=0.18, label=resolved_band_label)
     ax1.set_title(title)
     ax1.grid(True)
     ax1.legend()
