@@ -47,7 +47,7 @@ def compute_backtest_metrics(
 
     mdd = max_drawdown(equity)
     calmar = float(cagr / (abs(mdd) + 1e-12))
-    turnover = float(bt["dpos"].mean())
+    turnover = float(bt["dpos"].abs().mean())
 
     pnl_nonzero = pnl[pnl != 0]
     hit_rate = float((pnl_nonzero > 0).mean()) if len(pnl_nonzero) > 0 else np.nan

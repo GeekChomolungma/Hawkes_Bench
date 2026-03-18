@@ -29,6 +29,11 @@ class WhiteBoxConfig:
 @dataclass
 class HawkesConfig:
     quantile: float = 0.9
+    # Optional multi-threshold sweep. If empty, fall back to `quantile`.
+    quantile_grid: tuple[float, ...] = ()
+    # If False (default), fit Hawkes on train+val; if True, fit on train only.
+    # Online re-training is reserved for future work.
+    online_update_enabled: bool = False
     signed_events: bool = True
     alpha_risk: float = 1.0
     time_unit: str = "auto"  # "auto" | "D" | "s"
@@ -63,3 +68,6 @@ class OutputConfig:
     # Keep only core exp1 artifacts by default.
     # If True, also dump intermediate frames/rows/all-split metric files.
     exp1_save_debug_tables: bool = False
+    # Keep only core exp2 artifacts by default.
+    # If True, also dump backtest rows and additional diagnostics.
+    exp2_save_debug_tables: bool = False

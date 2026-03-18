@@ -1,94 +1,91 @@
 from __future__ import annotations
 
+import argparse
+import json
 from pathlib import Path
 
-from config import (
-    BacktestConfig,
-    DataConfig,
-    ExternalForecastConfig,
-    HawkesConfig,
-    OutputConfig,
-    SignalConfig,
-    SplitConfig,
-    WhiteBoxConfig,
-)
-from experiments.exp1_forecast_eval import run_exp1_forecast_eval
-from experiments.exp2_hawkes_ablation import run_exp2_hawkes_ablation
-from utils.interval_policy import apply_interval_policy
-from utils.market_meta import parse_market_from_csv_path
+from pipeline_runner import parse_cli_list, parse_cli_quantiles, run_pipeline_batch, run_pipeline_for_market
+
+
+def build_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(description="Hawkes Bench pipeline runner")
+    p.add_argument("--mode", choices=["full", "exp1", "exp2"], default="full")
+
+    # single-market mode
+    p.add_argument("--market-csv", default="")
+    p.add_argument("--symbol", default="BTCUSDT")
+    p.add_argument("--interval", default="1d")
+    p.add_argument("--external-csv", default="")
+
+    # batch mode
+    p.add_argument("--symbols", default="")
+    p.add_argument("--market-dir", default="market_info")
+    p.add_argument("--external-dir", default="data/external_forecasts")
+
+    # shared experiment controls
+    p.add_argument("--enable-blackbox", action="store_true", default=True)
+    p.add_argument("--disable-blackbox", action="store_true")
+    p.add_argument("--train-end", default="2022-12-31")
+    p.add_argument("--val-end", default="2024-12-31")
+    p.add_argument("--hawkes-quantiles", default="0.9", help="comma-separated, e.g. 0.85,0.9,0.95")
+    p.add_argument("--hawkes-online-update", action="store_true", default=False)
+    p.add_argument("--exp1-debug-tables", action="store_true", default=False)
+    p.add_argument("--exp2-debug-tables", action="store_true", default=False)
+
+    # optional output summary for batch orchestration
+    p.add_argument("--save-run-summary", default="")
+    return p
 
 
 def main() -> None:
-    """
-    Entry point for the thesis experiment pipeline.
+    args = build_parser().parse_args()
 
-    Runs:
-    - Experiment 1: forecast-layer evaluation
-    - Experiment 2: Hawkes ablation on trading layer
-    """
-    data_cfg = DataConfig(
-        csv_path="market_info/BTCUSDT_1d_Binance.csv",
-        symbol="BTCUSDT",
-        interval="1d",
-        split=SplitConfig(
-            train_end="2022-12-31",
-            val_end="2024-12-31",
-        ),
-    )
-    wb_cfg = WhiteBoxConfig(arima_order=(1, 0, 1), garch_pq=(1, 1), rolling_window=30, z_score=1.96)
-    hawkes_cfg = HawkesConfig(quantile=0.9, signed_events=True, alpha_risk=1.0, time_unit="auto")
-    sig_cfg = SignalConfig(position_cap=1.0)
-    bt_cfg = BacktestConfig(fee_bps=2.0, slippage_bps=1.0, bars_per_year=252)
-    out_cfg = OutputConfig(table_dir="reports/tables", figure_dir="reports/figures")
+    enable_blackbox = bool(args.enable_blackbox and not args.disable_blackbox)
+    hawkes_quantiles = parse_cli_quantiles(args.hawkes_quantiles)
 
-    # Sync market meta from filename convention when available.
-    meta = parse_market_from_csv_path(
-        csv_path=data_cfg.csv_path,
-        fallback_symbol=data_cfg.symbol,
-        fallback_interval=data_cfg.interval,
-    )
-    data_cfg.symbol = meta["symbol"]
-    data_cfg.interval = meta["interval"]
+    symbols = parse_cli_list(args.symbols)
+    if symbols:
+        results = run_pipeline_batch(
+            mode=args.mode,
+            symbols=symbols,
+            interval=args.interval,
+            market_dir=args.market_dir,
+            train_end=args.train_end,
+            val_end=args.val_end,
+            enable_blackbox=enable_blackbox,
+            external_dir=args.external_dir,
+            hawkes_quantiles=hawkes_quantiles,
+            hawkes_online_update_enabled=args.hawkes_online_update,
+            exp1_debug_tables=args.exp1_debug_tables,
+            exp2_debug_tables=args.exp2_debug_tables,
+        )
+    else:
+        market_csv = args.market_csv or f"market_info/{args.symbol}_{args.interval}_Binance.csv"
+        external_csv = args.external_csv or f"data/external_forecasts/zeroshot_{args.symbol}_{args.interval}_logreturn_predictions_decision_aligned.csv"
+        results = {
+            args.symbol: run_pipeline_for_market(
+                mode=args.mode,
+                market_csv=market_csv,
+                symbol=args.symbol,
+                interval=args.interval,
+                train_end=args.train_end,
+                val_end=args.val_end,
+                enable_blackbox=enable_blackbox,
+                external_csv=external_csv,
+                hawkes_quantiles=hawkes_quantiles,
+                hawkes_online_update_enabled=args.hawkes_online_update,
+                exp1_debug_tables=args.exp1_debug_tables,
+                exp2_debug_tables=args.exp2_debug_tables,
+            )
+        }
 
-    profile = apply_interval_policy(
-        interval=data_cfg.interval,
-        wb_cfg=wb_cfg,
-        bt_cfg=bt_cfg,
-        hawkes_cfg=hawkes_cfg,
-    )
-    print(
-        "[AUTO-CONFIG]",
-        f"interval={data_cfg.interval}",
-        f"rolling_window={wb_cfg.rolling_window}",
-        f"bars_per_year={bt_cfg.bars_per_year}",
-        f"hawkes_time_unit={hawkes_cfg.time_unit}",
-    )
+    print("[DONE] symbols:", ", ".join(results.keys()))
 
-    # black-box is connected through external table protocol
-    ext_cfg = ExternalForecastConfig(
-        enabled=True,
-        path="data/external_forecasts/zeroshot_BTCUSDT_1d_logreturn_predictions_decision_aligned.csv",
-        column_map={},
-    )
-
-    Path(out_cfg.table_dir).mkdir(parents=True, exist_ok=True)
-    Path(out_cfg.figure_dir).mkdir(parents=True, exist_ok=True)
-
-    print("[RUN] Experiment 1: Forecast evaluation")
-    exp1 = run_exp1_forecast_eval(data_cfg=data_cfg, wb_cfg=wb_cfg, out_cfg=out_cfg, ext_cfg=ext_cfg)
-    print(exp1)
-
-    print("[RUN] Experiment 2: Hawkes ablation backtest")
-    exp2 = run_exp2_hawkes_ablation(
-        data_cfg=data_cfg,
-        wb_cfg=wb_cfg,
-        hawkes_cfg=hawkes_cfg,
-        sig_cfg=sig_cfg,
-        bt_cfg=bt_cfg,
-        out_cfg=out_cfg,
-        ext_cfg=ext_cfg,
-    )
-    print(exp2)
+    if args.save_run_summary:
+        out_path = Path(args.save_run_summary)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text(json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8")
+        print(f"[SAVED] run summary: {out_path}")
 
 
 if __name__ == "__main__":

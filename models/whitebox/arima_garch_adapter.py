@@ -34,8 +34,8 @@ class WhiteBoxForecaster:
 
         z = float(self.cfg.z_score)
 
-        # return-space band, for next step, aligned with the return target at "pred_for_ts" but at decision time ts
-        df["ret_pred_lo"] = df["mu_pred"] - z * df["sigma_pred"]
+        # return-space band, for next step which is t+1, aligned with the return target at "pred_for_ts" but at decision time ts
+        df["ret_pred_lo"] = df["mu_pred"] - z * df["sigma_pred"] # mu_next - z * sigma_next
         df["ret_pred_hi"] = df["mu_pred"] + z * df["sigma_pred"]
 
         # price-space projection band (assuming log-return mapping)

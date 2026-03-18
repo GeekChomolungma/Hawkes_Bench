@@ -108,19 +108,39 @@ Optional columns:
 - Point: `mu_pred`, `sigma_pred`
 - Quantile: `q05,q10,q25,q50,q75,q90,q95`
 
-If your external names differ, set `ExternalForecastConfig.column_map` in `main.py`.
+If your external names differ, set `ExternalForecastConfig.column_map`.
 
 ## Run
 
-Run full pipeline:
+Run full pipeline (single symbol):
 
 ```powershell
-env\Scripts\python main.py
+env\Scripts\python main.py --mode full --symbol BTCUSDT --interval 1d --enable-blackbox
 ```
 
-By default it runs white-box only. To enable black-box input, set:
-- `ExternalForecastConfig.enabled = True`
-- `ExternalForecastConfig.path = <your file>`
+Run only Exp1 or Exp2:
+
+```powershell
+env\Scripts\python main.py --mode exp1 --symbol BTCUSDT --interval 1d --enable-blackbox
+env\Scripts\python main.py --mode exp2 --symbol BTCUSDT --interval 1d --enable-blackbox
+```
+
+Run batch multi-symbol:
+
+```powershell
+env\Scripts\python main.py --mode full --symbols BTCUSDT,ETHUSDT,LTCUSDT --interval 1d --enable-blackbox
+```
+
+Script-style wrappers:
+
+- `scripts/run_batch_full.ps1` (PowerShell)
+- `scripts/run_batch_full.sh` (bash-like environments)
+
+Example:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/run_batch_full.ps1 -Symbols "BTCUSDT,ETHUSDT"
+```
 
 ### Auto interval policy
 

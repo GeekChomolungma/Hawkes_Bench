@@ -205,30 +205,62 @@ def plot_backtest_layer(
     equity is the strategy equity index, starting at 1.0.
     """
     df = bt.copy()
-    idx = df.index
-    px = close.reindex(idx).astype(float)
+    settle_idx = df.index
+    close_full = close.astype(float)
 
-    dpos = df["pos"].diff().fillna(0.0)
-    buy_idx = idx[dpos > 0]
-    sell_idx = idx[dpos < 0]
+    # Use decision-time turnover for markers when available.
+    if "decision_ts" in df.columns:
+        decision_ts = pd.to_datetime(df["decision_ts"], utc=True, errors="coerce")
+        marker_ts = pd.DatetimeIndex(decision_ts.dropna())
+        dpos = pd.Series(df["dpos"].to_numpy(), index=marker_ts).sort_index()
+    else:
+        # Fallback to settlement-time inference.
+        marker_ts = settle_idx
+        dpos = df["pos"].diff()
+        if len(dpos) > 0:
+            dpos.iloc[0] = df["pos"].iloc[0]
+        dpos = dpos.fillna(0.0)
+
+    buy_idx = dpos.index[dpos > 0]
+    sell_idx = dpos.index[dpos < 0]
 
     fig = plt.figure(figsize=(15, 9))
     ax1 = plt.subplot(2, 1, 1)
     ax2 = plt.subplot(2, 1, 2, sharex=ax1)
 
-    ax1.plot(idx, px.values, label="Close", color="tab:blue", linewidth=1.4)
+    ax1.plot(close_full.index, close_full.values, label="Close", color="tab:blue", linewidth=1.4)
     if len(buy_idx) > 0:
-        ax1.scatter(buy_idx, px.reindex(buy_idx).values, marker="^", s=50, label="Buy", color="tab:green")
+        ax1.scatter(buy_idx, close_full.reindex(buy_idx).values, marker="^", s=50, label="Buy", color="tab:green")
     if len(sell_idx) > 0:
-        ax1.scatter(sell_idx, px.reindex(sell_idx).values, marker="v", s=50, label="Sell", color="tab:red")
+        ax1.scatter(sell_idx, close_full.reindex(sell_idx).values, marker="v", s=50, label="Sell", color="tab:red")
 
     ax1.set_title(title)
     ax1.grid(True)
     ax1.legend()
 
-    ax2.plot(idx, df["equity"].values, label="Equity", color="tab:orange", linewidth=1.8)
-    buy_hold = (px / (px.iloc[0] + 1e-12)).astype(float)
-    ax2.plot(idx, buy_hold.values, label="Buy & Hold", color="tab:gray", linewidth=1.4, linestyle="--")
+    # Prepend initial equity point at first decision timestamp with value 1.0.
+    if "decision_ts" in df.columns:
+        first_decision_ts = pd.to_datetime(df["decision_ts"].iloc[0], utc=True, errors="coerce")
+    else:
+        first_decision_ts = close_full.index.min()
+
+    eq_idx = settle_idx
+    eq_val = df["equity"].astype(float)
+    if pd.notna(first_decision_ts):
+        eq_idx = pd.DatetimeIndex([first_decision_ts]).append(pd.DatetimeIndex(settle_idx))
+        eq_val = pd.concat([pd.Series([1.0], index=[first_decision_ts]), eq_val])
+
+    ax2.plot(eq_idx, eq_val.values, label="Equity", color="tab:orange", linewidth=1.8)
+
+    base0 = close_full.loc[first_decision_ts] if pd.notna(first_decision_ts) and first_decision_ts in close_full.index else close_full.iloc[0]
+    buy_hold_settle = (close_full.reindex(settle_idx).astype(float) / (base0 + 1e-12)).astype(float)
+    if pd.notna(first_decision_ts):
+        buy_hold = pd.concat([pd.Series([1.0], index=[first_decision_ts]), buy_hold_settle])
+        bh_idx = eq_idx
+    else:
+        buy_hold = buy_hold_settle
+        bh_idx = settle_idx
+    ax2.plot(bh_idx, buy_hold.values, label="Buy & Hold", color="tab:gray", linewidth=1.4, linestyle="--")
     ax2.grid(True)
     ax2.legend()
 
