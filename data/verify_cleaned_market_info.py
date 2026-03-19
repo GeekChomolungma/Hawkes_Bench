@@ -90,6 +90,8 @@ def verify_one_file(csv_path: Path) -> VerifyResult:
     idx = pd.DatetimeIndex(ts).sort_values()
     ts_duplicate = int(idx.duplicated().sum())
     ts_not_monotonic = int(not idx.is_monotonic_increasing)
+    year_min = int(idx.min().year)
+    year_max = int(idx.max().year)
 
     full_idx = pd.date_range(start=idx.min(), end=idx.max(), freq=freq, tz="UTC")
     gap_count = int(len(full_idx) - len(idx.unique()))
@@ -100,6 +102,9 @@ def verify_one_file(csv_path: Path) -> VerifyResult:
         fail_reasons.append(f"duplicate_ts={ts_duplicate}")
     if ts_not_monotonic > 0:
         fail_reasons.append("timestamp not monotonic")
+    # Guardrail for common seconds-vs-milliseconds scaling bugs.
+    if year_min < 2000 or year_max > 2100:
+        fail_reasons.append(f"timestamp year out of expected range: [{year_min}, {year_max}]")
     if gap_count > 0:
         fail_reasons.append(f"gaps={gap_count}")
     if "close" not in df.columns:
@@ -132,9 +137,23 @@ def verify_cleaned_dir(cleaned_dir: str = "market_info/cleaned") -> pd.DataFrame
 
     results: list[VerifyResult] = []
     for f in files:
-        if f.name == "clean_summary.csv":
+        if f.name in {"clean_summary.csv", "verify_summary.csv", "clean_trace_audit.csv"}:
             continue
-        res = verify_one_file(f)
+        try:
+            res = verify_one_file(f)
+        except Exception as e:
+            res = VerifyResult(
+                file_name=f.name,
+                status="FAIL",
+                freq_expected="unknown",
+                rows=len(pd.read_csv(f)) if f.exists() else -1,
+                ts_missing=-1,
+                ts_duplicate=-1,
+                ts_not_monotonic=-1,
+                gap_count=-1,
+                missing_close=-1,
+                note=f"verification exception: {e}",
+            )
         results.append(res)
         print(f"[verify] {res.file_name} | {res.status} | {res.note}")
 

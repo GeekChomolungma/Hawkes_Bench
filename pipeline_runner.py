@@ -19,6 +19,8 @@ from experiments.exp2_hawkes_ablation import run_exp2_hawkes_ablation
 from utils.interval_policy import apply_interval_policy
 from utils.market_meta import parse_market_from_csv_path
 
+DEFAULT_EXTERNAL_PREFIXES: tuple[str, ...] = ("zeroshot", "newLoss1", "finetuned")
+
 
 def _parse_csv_list(raw: str | None) -> list[str]:
     if not raw:
@@ -39,7 +41,7 @@ def _parse_float_tuple(raw: str | None) -> tuple[float, ...]:
 
 
 def resolve_market_csv(market_dir: str, symbol: str, interval: str) -> str:
-    p = Path(market_dir) / f"{symbol}_{interval}_Binance.csv"
+    p = Path(market_dir) / f"{symbol}_{interval}_Binance_cleaned.csv"
     if not p.exists():
         raise FileNotFoundError(f"Market csv not found: {p}")
     return str(p)
@@ -48,6 +50,21 @@ def resolve_market_csv(market_dir: str, symbol: str, interval: str) -> str:
 def resolve_external_csv(external_dir: str, symbol: str, interval: str) -> str:
     p = Path(external_dir) / f"zeroshot_{symbol}_{interval}_logreturn_predictions_decision_aligned.csv"
     return str(p)
+
+
+def resolve_external_csv_candidates(
+    external_dir: str,
+    symbol: str,
+    interval: str,
+    prefixes: Iterable[str],
+) -> list[tuple[str, str]]:
+    out: list[tuple[str, str]] = []
+    for prefix in prefixes:
+        name = f"{prefix}_{symbol}_{interval}_logreturn_predictions_decision_aligned.csv"
+        p = Path(external_dir) / name
+        if p.exists():
+            out.append((prefix, str(p)))
+    return out
 
 
 def build_configs_for_market(
@@ -62,6 +79,7 @@ def build_configs_for_market(
     hawkes_online_update_enabled: bool,
     exp1_debug_tables: bool,
     exp2_debug_tables: bool,
+    output_subdir: str | None = None,
 ) -> tuple[DataConfig, WhiteBoxConfig, HawkesConfig, SignalConfig, BacktestConfig, OutputConfig, ExternalForecastConfig]:
     data_cfg = DataConfig(
         csv_path=market_csv,
@@ -80,9 +98,15 @@ def build_configs_for_market(
     )
     sig_cfg = SignalConfig(position_cap=1.0)
     bt_cfg = BacktestConfig(fee_bps=2.0, slippage_bps=1.0, bars_per_year=252)
+    table_dir = Path("reports/tables")
+    figure_dir = Path("reports/figures")
+    if output_subdir:
+        table_dir = table_dir / output_subdir
+        figure_dir = figure_dir / output_subdir
+
     out_cfg = OutputConfig(
-        table_dir="reports/tables",
-        figure_dir="reports/figures",
+        table_dir=str(table_dir),
+        figure_dir=str(figure_dir),
         exp1_save_debug_tables=exp1_debug_tables,
         exp2_save_debug_tables=exp2_debug_tables,
     )
@@ -126,6 +150,7 @@ def run_pipeline_for_market(
     hawkes_online_update_enabled: bool,
     exp1_debug_tables: bool,
     exp2_debug_tables: bool,
+    output_subdir: str | None = None,
 ) -> dict:
     data_cfg, wb_cfg, hawkes_cfg, sig_cfg, bt_cfg, out_cfg, ext_cfg = build_configs_for_market(
         market_csv=market_csv,
@@ -139,6 +164,7 @@ def run_pipeline_for_market(
         hawkes_online_update_enabled=hawkes_online_update_enabled,
         exp1_debug_tables=exp1_debug_tables,
         exp2_debug_tables=exp2_debug_tables,
+        output_subdir=output_subdir,
     )
 
     print(
@@ -158,6 +184,7 @@ def run_pipeline_for_market(
             "market_csv": data_cfg.csv_path,
             "external_csv": ext_cfg.path if ext_cfg.enabled else None,
             "blackbox_enabled": ext_cfg.enabled,
+            "output_subdir": output_subdir,
             "split": asdict(data_cfg.split),
         }
     }
@@ -195,30 +222,86 @@ def run_pipeline_batch(
     val_end: str,
     enable_blackbox: bool,
     external_dir: str,
+    external_prefixes: Iterable[str],
     hawkes_quantiles: tuple[float, ...],
     hawkes_online_update_enabled: bool,
     exp1_debug_tables: bool,
     exp2_debug_tables: bool,
 ) -> dict[str, dict]:
+    prefixes = [p.strip() for p in external_prefixes if p and p.strip()]
+    if not prefixes:
+        prefixes = list(DEFAULT_EXTERNAL_PREFIXES)
+
     results: dict[str, dict] = {}
     for symbol in symbols:
         market_csv = resolve_market_csv(market_dir=market_dir, symbol=symbol, interval=interval)
-        external_csv = resolve_external_csv(external_dir=external_dir, symbol=symbol, interval=interval)
         print(f"\n[PIPELINE] {symbol} {interval}")
-        results[symbol] = run_pipeline_for_market(
-            mode=mode,
-            market_csv=market_csv,
-            symbol=symbol,
-            interval=interval,
-            train_end=train_end,
-            val_end=val_end,
-            enable_blackbox=enable_blackbox,
-            external_csv=external_csv,
-            hawkes_quantiles=hawkes_quantiles,
-            hawkes_online_update_enabled=hawkes_online_update_enabled,
-            exp1_debug_tables=exp1_debug_tables,
-            exp2_debug_tables=exp2_debug_tables,
+        results[symbol] = {}
+        candidates = (
+            resolve_external_csv_candidates(
+                external_dir=external_dir,
+                symbol=symbol,
+                interval=interval,
+                prefixes=prefixes,
+            )
+            if enable_blackbox
+            else []
         )
+
+        if enable_blackbox and not candidates:
+            print(f"[WARN] no external forecast candidates found for {symbol} {interval}, run white-box only.")
+            results[symbol]["whitebox_only"] = run_pipeline_for_market(
+                mode=mode,
+                market_csv=market_csv,
+                symbol=symbol,
+                interval=interval,
+                train_end=train_end,
+                val_end=val_end,
+                enable_blackbox=False,
+                external_csv=None,
+                hawkes_quantiles=hawkes_quantiles,
+                hawkes_online_update_enabled=hawkes_online_update_enabled,
+                exp1_debug_tables=exp1_debug_tables,
+                exp2_debug_tables=exp2_debug_tables,
+                output_subdir="whitebox_only",
+            )
+            continue
+
+        if not enable_blackbox:
+            results[symbol]["whitebox_only"] = run_pipeline_for_market(
+                mode=mode,
+                market_csv=market_csv,
+                symbol=symbol,
+                interval=interval,
+                train_end=train_end,
+                val_end=val_end,
+                enable_blackbox=False,
+                external_csv=None,
+                hawkes_quantiles=hawkes_quantiles,
+                hawkes_online_update_enabled=hawkes_online_update_enabled,
+                exp1_debug_tables=exp1_debug_tables,
+                exp2_debug_tables=exp2_debug_tables,
+                output_subdir="whitebox_only",
+            )
+            continue
+
+        for prefix, external_csv in candidates:
+            print(f"[PIPELINE][{symbol}] external model prefix={prefix} file={external_csv}")
+            results[symbol][prefix] = run_pipeline_for_market(
+                mode=mode,
+                market_csv=market_csv,
+                symbol=symbol,
+                interval=interval,
+                train_end=train_end,
+                val_end=val_end,
+                enable_blackbox=True,
+                external_csv=external_csv,
+                hawkes_quantiles=hawkes_quantiles,
+                hawkes_online_update_enabled=hawkes_online_update_enabled,
+                exp1_debug_tables=exp1_debug_tables,
+                exp2_debug_tables=exp2_debug_tables,
+                output_subdir=prefix,
+            )
     return results
 
 

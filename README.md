@@ -110,33 +110,98 @@ Optional columns:
 
 If your external names differ, set `ExternalForecastConfig.column_map`.
 
-## Run
+## How To Run
 
-Run full pipeline (single symbol):
+This repo has 3 main runnable Python entry files:
+
+- `main.py`: run experiment pipeline (`exp1`, `exp2`, or both)
+- `data/clean_market_info.py`: clean and repair raw market csv files
+- `data/verify_cleaned_market_info.py`: validate cleaned market csv files
+
+### 1) Pipeline entry (`main.py`)
+
+Show CLI help:
+
+```powershell
+env\Scripts\python main.py --help
+```
+
+Run full pipeline for one symbol:
 
 ```powershell
 env\Scripts\python main.py --mode full --symbol BTCUSDT --interval 1d --enable-blackbox
 ```
 
-Run only Exp1 or Exp2:
+Run only one experiment:
 
 ```powershell
 env\Scripts\python main.py --mode exp1 --symbol BTCUSDT --interval 1d --enable-blackbox
 env\Scripts\python main.py --mode exp2 --symbol BTCUSDT --interval 1d --enable-blackbox
 ```
 
-Run batch multi-symbol:
+Run batch symbols:
 
 ```powershell
 env\Scripts\python main.py --mode full --symbols BTCUSDT,ETHUSDT,LTCUSDT --interval 1d --enable-blackbox
 ```
 
-Script-style wrappers:
+Batch + multi black-box prefixes (default is already `zeroshot,newLoss1,finetuned`):
+
+```powershell
+env\Scripts\python main.py --mode full --symbols BTCUSDT,ETHUSDT --interval 1d --enable-blackbox --external-prefixes zeroshot,newLoss1,finetuned
+```
+
+Black-box filename convention:
+
+- `{prefix}_{SYMBOL}_{INTERVAL}_logreturn_predictions_decision_aligned.csv`
+- Example: `finetuned_BCHUSDT_1d_logreturn_predictions_decision_aligned.csv`
+
+When batch mode finds multiple prefixes for the same symbol, outputs are auto-archived into:
+
+- `reports/tables/{prefix}/...`
+- `reports/figures/{prefix}/...`
+
+If no external file is found (or black-box is disabled), outputs go to:
+
+- `reports/tables/whitebox_only/...`
+- `reports/figures/whitebox_only/...`
+
+### 2) Data cleaning entry (`data/clean_market_info.py`)
+
+Default run (input `market_info/`, output `market_info/cleaned/`):
+
+```powershell
+env\Scripts\python data/clean_market_info.py
+```
+
+Notes:
+
+- Timestamp columns (`starttime`/`eventtime`) are treated as millisecond timestamps.
+- The script repairs missing bars by reindexing to expected interval and interpolation.
+- It writes `*_cleaned.csv` and `clean_summary.csv`.
+
+### 3) Cleaned data verification entry (`data/verify_cleaned_market_info.py`)
+
+Default run (verify `market_info/cleaned/`):
+
+```powershell
+env\Scripts\python data/verify_cleaned_market_info.py
+```
+
+It writes `verify_summary.csv` and reports PASS/FAIL for:
+
+- timestamp parse errors
+- duplicate timestamps
+- monotonicity
+- interval gaps
+- missing close values
+
+### 4) Wrapper scripts
 
 - `scripts/run_batch_full.ps1` (PowerShell)
 - `scripts/run_batch_full.sh` (bash-like environments)
 
-Example:
+PowerShell example:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/run_batch_full.ps1 -Symbols "BTCUSDT,ETHUSDT"

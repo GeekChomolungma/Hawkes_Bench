@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -100,7 +100,8 @@ def plot_forecast_layer(
     plt.tight_layout()
     if out_path:
         plt.savefig(out_path, dpi=200)
-    plt.show()
+    # plt.show()  # disabled to avoid blocking in batch runs
+    plt.close()
 
 
 def plot_return_target_layer(
@@ -190,7 +191,8 @@ def plot_return_target_layer(
     plt.tight_layout()
     if out_path:
         plt.savefig(out_path, dpi=200)
-    plt.show()
+    # plt.show()  # disabled to avoid blocking in batch runs
+    plt.close()
 
 
 def plot_backtest_layer(
@@ -267,7 +269,8 @@ def plot_backtest_layer(
     plt.tight_layout()
     if out_path:
         plt.savefig(out_path, dpi=200)
-    plt.show()
+    # plt.show()  # disabled to avoid blocking in batch runs
+    plt.close()
 
 
 def plot_hawkes_lambda_splits(
@@ -320,4 +323,7 @@ def plot_hawkes_lambda_splits(
     ax2.legend()
 
     plt.tight_layout()
-    plt.show()
+    # plt.show()  # disabled to avoid blocking in batch runs
+    plt.close(fig)
+
+

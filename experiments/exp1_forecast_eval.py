@@ -171,6 +171,7 @@ def run_exp1_forecast_eval(
     }
     save_metrics(out, f"{out_cfg.table_dir}/exp1_summary_metrics_{mk}.json")
 
+    # Black box evaluation
     if ext_cfg is not None and ext_cfg.enabled:
         black_raw = load_external_forecast(
             ForecastLoadConfig(

@@ -4,6 +4,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 
@@ -44,14 +45,28 @@ def _pick_ts_col(df: pd.DataFrame) -> str:
     raise ValueError("CSV must contain either 'starttime' or 'eventtime'.")
 
 
+def _infer_epoch_unit(raw: pd.Series) -> str:
+    v = pd.to_numeric(raw, errors="coerce").dropna().abs()
+    if v.empty:
+        return "ms"
+    med = float(v.median())
+    # Typical Unix epoch:
+    # - seconds: ~1e9
+    # - milliseconds: ~1e12
+    if med >= 1e11:
+        return "ms"
+    return "s"
+
+
 def _infer_freq_from_data(ts: pd.Series) -> str:
     dt = ts.sort_values().diff().dropna()
     if dt.empty:
         raise ValueError("Cannot infer frequency from <= 1 timestamp.")
-    sec = int(dt.median().total_seconds())
-    if sec <= 0:
+    # Use Timedelta arithmetic to avoid depending on datetime storage unit (ms/ns).
+    ms = int(dt.median() / pd.Timedelta(milliseconds=1))
+    if ms <= 0:
         raise ValueError("Invalid timestamp sequence for frequency inference.")
-    return f"{sec}s"
+    return f"{ms}ms"
 
 
 @dataclass
@@ -68,7 +83,8 @@ def clean_one_csv(csv_path: Path, out_dir: Path) -> CleanResult:
     df = pd.read_csv(csv_path)
     ts_col = _pick_ts_col(df)
 
-    ts = pd.to_datetime(df[ts_col], unit="ms", utc=True, errors="coerce")
+    ts_unit = _infer_epoch_unit(df[ts_col])
+    ts = pd.to_datetime(pd.to_numeric(df[ts_col], errors="coerce"), unit=ts_unit, utc=True, errors="coerce")
     bad_ts = ts.isna().sum()
     if bad_ts > 0:
         df = df.loc[~ts.isna()].copy()
@@ -76,6 +92,8 @@ def clean_one_csv(csv_path: Path, out_dir: Path) -> CleanResult:
 
     df["_ts"] = ts
     df = df.sort_values("_ts").drop_duplicates(subset=["_ts"], keep="last").set_index("_ts")
+    # Snapshot original (post-dedup) rows for strict preservation checks.
+    raw_aligned = df.copy()
 
     freq = _freq_from_filename(csv_path)
     if freq is None:
@@ -85,24 +103,64 @@ def clean_one_csv(csv_path: Path, out_dir: Path) -> CleanResult:
     before = len(df)
     df = df.reindex(full_idx)
     inserted = len(df) - before
+    inserted_mask = ~df.index.isin(raw_aligned.index)
 
     # Interpolate numeric columns in time, then ffill/bfill as fallback
     ts_cols = {"starttime", "eventtime"}
     numeric_cols = [c for c in df.columns if c not in ts_cols and pd.api.types.is_numeric_dtype(df[c])]
     if numeric_cols:
-        df[numeric_cols] = df[numeric_cols].interpolate(method="time").ffill().bfill()
+        num_filled = df[numeric_cols].interpolate(method="time").ffill().bfill()
+        # Only fill inserted rows; never modify existing raw-timestamp rows.
+        df.loc[inserted_mask, numeric_cols] = num_filled.loc[inserted_mask, numeric_cols]
 
     # Fill non-numeric columns by nearest known values
     other_cols = [c for c in df.columns if c not in numeric_cols and c not in ts_cols]
     for c in other_cols:
-        df[c] = df[c].ffill().bfill()
+        col_filled = df[c].ffill().bfill()
+        # Only fill inserted rows; preserve raw values exactly on overlap timestamps.
+        df.loc[inserted_mask, c] = col_filled.loc[inserted_mask]
 
-    # Rebuild ms timestamp columns from repaired index
-    ts_ms = (df.index.view("int64") // 10**6).astype("int64")
+    # Rebuild ms timestamp columns from repaired index.
+    # Force conversion to ns first, then convert ns -> ms so this works for
+    # both datetime64[ms, UTC] and datetime64[ns, UTC] backends.
+    ts_ns = (
+        df.index.tz_convert("UTC")
+        .tz_localize(None)
+        .to_numpy(dtype="datetime64[ns]")
+        .astype("int64")
+    )
+    ts_ms = (ts_ns // 10**6).astype("int64")
     if "starttime" in df.columns:
-        df["starttime"] = ts_ms
+        start_col = df["starttime"].copy()
+        start_col.loc[inserted_mask] = ts_ms[inserted_mask]
+        df["starttime"] = pd.to_numeric(start_col, errors="coerce").astype("int64")
     if "eventtime" in df.columns:
-        df["eventtime"] = ts_ms
+        event_col = df["eventtime"].copy()
+        event_col.loc[inserted_mask] = ts_ms[inserted_mask]
+        df["eventtime"] = pd.to_numeric(event_col, errors="coerce").astype("int64")
+
+    # Strict guarantee: on raw timestamps, every shared column value must match.
+    overlap_idx = raw_aligned.index.intersection(df.index)
+    shared_cols = [c for c in raw_aligned.columns if c in df.columns]
+    mismatch_count = 0
+    for c in shared_cols:
+        a = raw_aligned.loc[overlap_idx, c]
+        b = df.loc[overlap_idx, c]
+        a_num = pd.to_numeric(a, errors="coerce")
+        b_num = pd.to_numeric(b, errors="coerce")
+        both_num = (a_num.notna() | b_num.notna())
+        if bool(both_num.any()):
+            equal = np.isclose(a_num.to_numpy(dtype=float), b_num.to_numpy(dtype=float), equal_nan=True, rtol=0.0, atol=0.0)
+            mismatch_count += int((~equal).sum())
+        else:
+            aa = a.astype("string").fillna("<NA>")
+            bb = b.astype("string").fillna("<NA>")
+            mismatch_count += int((aa != bb).sum())
+    if mismatch_count > 0:
+        raise ValueError(
+            f"Strict clean check failed for {csv_path.name}: "
+            f"{mismatch_count} mismatched cell(s) on raw timestamps."
+        )
 
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / f"{csv_path.stem}_cleaned.csv"
