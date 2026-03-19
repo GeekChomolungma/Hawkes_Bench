@@ -4,7 +4,13 @@ import argparse
 import json
 from pathlib import Path
 
-from pipeline_runner import parse_cli_list, parse_cli_quantiles, run_pipeline_batch, run_pipeline_for_market
+from pipeline_runner import (
+    parse_cli_list,
+    parse_cli_quantiles,
+    resolve_external_csv_candidates,
+    run_pipeline_batch,
+    run_pipeline_for_market,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -21,7 +27,6 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--symbols", default="")
     p.add_argument("--market-dir", default="market_info/cleaned")
     p.add_argument("--external-dir", default="data/external_forecasts")
-    p.add_argument("--external-prefixes", default="zeroshot,newLoss1,finetuned")
 
     # shared experiment controls
     p.add_argument("--enable-blackbox", action="store_true", default=True)
@@ -46,7 +51,6 @@ def main() -> None:
 
     symbols = parse_cli_list(args.symbols)
     if symbols:
-        external_prefixes = parse_cli_list(args.external_prefixes)
         results = run_pipeline_batch(
             mode=args.mode,
             symbols=symbols,
@@ -56,15 +60,26 @@ def main() -> None:
             val_end=args.val_end,
             enable_blackbox=enable_blackbox,
             external_dir=args.external_dir,
-            external_prefixes=external_prefixes,
             hawkes_quantiles=hawkes_quantiles,
             hawkes_online_update_enabled=args.hawkes_online_update,
             exp1_debug_tables=args.exp1_debug_tables,
             exp2_debug_tables=args.exp2_debug_tables,
         )
     else:
-        market_csv = args.market_csv or f"market_info/{args.symbol}_{args.interval}_Binance.csv"
-        external_csv = args.external_csv or f"data/external_forecasts/zeroshot_{args.symbol}_{args.interval}_logreturn_predictions_decision_aligned.csv"
+        market_csv = args.market_csv or f"market_info/cleaned/{args.symbol}_{args.interval}_Binance_cleaned.csv"
+        external_csv = args.external_csv
+        output_subdir = None
+        if enable_blackbox and not external_csv:
+            candidates = resolve_external_csv_candidates(
+                external_dir=args.external_dir,
+                symbol=args.symbol,
+                interval=args.interval,
+            )
+            if candidates:
+                output_subdir, external_csv = candidates[0]
+                print(f"[AUTO] single-mode external selected: {output_subdir} -> {external_csv}")
+            else:
+                print(f"[WARN] no external forecast discovered for {args.symbol} {args.interval}, black-box will be disabled.")
         results = {
             args.symbol: run_pipeline_for_market(
                 mode=args.mode,
@@ -79,6 +94,7 @@ def main() -> None:
                 hawkes_online_update_enabled=args.hawkes_online_update,
                 exp1_debug_tables=args.exp1_debug_tables,
                 exp2_debug_tables=args.exp2_debug_tables,
+                output_subdir=output_subdir,
             )
         }
 

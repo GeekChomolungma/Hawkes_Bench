@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import asdict
 from pathlib import Path
 from typing import Iterable
@@ -19,7 +20,10 @@ from experiments.exp2_hawkes_ablation import run_exp2_hawkes_ablation
 from utils.interval_policy import apply_interval_policy
 from utils.market_meta import parse_market_from_csv_path
 
-DEFAULT_EXTERNAL_PREFIXES: tuple[str, ...] = ("zeroshot", "newLoss1", "finetuned")
+_NEW_EXTERNAL_RE = re.compile(
+    r"^predictions_decision_aligned__target_(?P<symbol>[a-z0-9]+)__init_(?P<init_mode>[a-z0-9]+)__loss_(?P<loss_mode>[a-z0-9]+)__tag_(?P<tag>.+)\.csv$",
+    flags=re.IGNORECASE,
+)
 
 
 def _parse_csv_list(raw: str | None) -> list[str]:
@@ -47,23 +51,93 @@ def resolve_market_csv(market_dir: str, symbol: str, interval: str) -> str:
     return str(p)
 
 
-def resolve_external_csv(external_dir: str, symbol: str, interval: str) -> str:
-    p = Path(external_dir) / f"zeroshot_{symbol}_{interval}_logreturn_predictions_decision_aligned.csv"
-    return str(p)
+def _sanitize_tag(s: str) -> str:
+    out = re.sub(r"[^A-Za-z0-9._-]+", "_", s).strip("_")
+    return out or "model"
 
 
 def resolve_external_csv_candidates(
     external_dir: str,
     symbol: str,
     interval: str,
-    prefixes: Iterable[str],
 ) -> list[tuple[str, str]]:
+    """
+    Discover external forecast files for one (symbol, interval) pair.
+
+    Expected on-disk layout:
+        {external_dir}/{family}/{interval}/{run_id}/predictions_decision_aligned__target_<symbol>__init_<init_mode>__loss_<loss_mode>__tag_<tag>.csv
+
+    Where:
+    - family: model family folder (e.g. "ft", "hf")
+    - interval: time interval folder (e.g. "1d", "4h")
+    - run_id: arbitrary run folder name, usually a number/string (e.g. "1", "2", "expA")
+      This function treats run_id as opaque text and does not enforce numeric parsing.
+
+    Simple example:
+        data/external_forecasts/ft/1d/1/predictions_decision_aligned__target_bchusdt__init_pretrained__loss_native__tag_batch_bchusdt_to_bchusdt.csv
+
+    Returned value:
+    - List of tuples: (output_subdir_key, csv_path)
+    - output_subdir_key is mirrored under reports/tables and reports/figures.
+      Example key: "ft/1d/1"
+    - If multiple files for the same (family/interval/run_id/symbol) exist, a model suffix
+      is appended to avoid output overwrite:
+      "ft/1d/1/init_pretrained__loss_native__tag_xxx"
+    """
+    root = Path(external_dir)
+    sym_u = symbol.upper()
+    itv_l = interval.lower()
+
+    # Collected entries:
+    # (base_subdir, model_slug, path)
+    raw_entries: list[tuple[str, str, str]] = []
+
+    # New format (current business rule):
+    #   {external_dir}/{family}/{interval}/{run_id}/predictions_decision_aligned__target_...csv
+    # where family is typically ft/hf and run_id is arbitrary (e.g. "1").
+    for family_dir in sorted([d for d in root.iterdir() if d.is_dir()]):
+        interval_dirs = [d for d in family_dir.iterdir() if d.is_dir() and d.name.lower() == itv_l]
+        if not interval_dirs:
+            continue
+
+        for interval_dir in sorted(interval_dirs):
+            run_dirs = sorted([d for d in interval_dir.iterdir() if d.is_dir()])
+            if not run_dirs:
+                # Allow missing run_id layer as fallback, though preferred layout has it.
+                run_dirs = [interval_dir]
+
+            for run_dir in run_dirs:
+                for p in sorted(run_dir.glob("predictions_decision_aligned__target_*__init_*__loss_*__tag_*.csv")):
+                    m = _NEW_EXTERNAL_RE.match(p.name)
+                    if not m:
+                        continue
+                    if m.group("symbol").upper() != sym_u:
+                        continue
+
+                    init_mode = _sanitize_tag(m.group("init_mode").lower())
+                    loss_mode = _sanitize_tag(m.group("loss_mode").lower())
+                    tag = _sanitize_tag(m.group("tag").lower())
+                    model_slug = f"init_{init_mode}__loss_{loss_mode}__tag_{tag}"
+
+                    # Mirror external folder hierarchy under reports.
+                    base_subdir = f"{family_dir.name}/{interval_dir.name}"
+                    if run_dir != interval_dir:
+                        base_subdir = f"{base_subdir}/{run_dir.name}"
+                    raw_entries.append((base_subdir, model_slug, str(p)))
+
+    # Build stable output keys:
+    # - If one model under same base_subdir, use base_subdir directly.
+    # - If multiple models under same base_subdir, append model_slug to avoid overwrite.
+    counts: dict[str, int] = {}
+    for base_subdir, _, _ in raw_entries:
+        counts[base_subdir] = counts.get(base_subdir, 0) + 1
+
     out: list[tuple[str, str]] = []
-    for prefix in prefixes:
-        name = f"{prefix}_{symbol}_{interval}_logreturn_predictions_decision_aligned.csv"
-        p = Path(external_dir) / name
-        if p.exists():
-            out.append((prefix, str(p)))
+    for base_subdir, model_slug, path in raw_entries:
+        key = base_subdir if counts[base_subdir] == 1 else f"{base_subdir}/{model_slug}"
+        out.append((key, path))
+
+    out.sort(key=lambda x: (x[0], x[1]))
     return out
 
 
@@ -222,16 +296,11 @@ def run_pipeline_batch(
     val_end: str,
     enable_blackbox: bool,
     external_dir: str,
-    external_prefixes: Iterable[str],
     hawkes_quantiles: tuple[float, ...],
     hawkes_online_update_enabled: bool,
     exp1_debug_tables: bool,
     exp2_debug_tables: bool,
 ) -> dict[str, dict]:
-    prefixes = [p.strip() for p in external_prefixes if p and p.strip()]
-    if not prefixes:
-        prefixes = list(DEFAULT_EXTERNAL_PREFIXES)
-
     results: dict[str, dict] = {}
     for symbol in symbols:
         market_csv = resolve_market_csv(market_dir=market_dir, symbol=symbol, interval=interval)
@@ -242,7 +311,6 @@ def run_pipeline_batch(
                 external_dir=external_dir,
                 symbol=symbol,
                 interval=interval,
-                prefixes=prefixes,
             )
             if enable_blackbox
             else []

@@ -4,6 +4,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+COLOR_GT = "tab:orange"
+COLOR_PRED = "tab:blue"
+COLOR_BAND = "lightblue"
+
 
 def _get_target_x(index: pd.DatetimeIndex, anchor: pd.Series | pd.DataFrame, pred_for_ts: pd.Series | None = None) -> pd.Series:
     if pred_for_ts is not None:
@@ -81,18 +85,19 @@ def plot_forecast_layer(
 
     valid = target_x.notna() & df["price_pred_median"].notna()
     plt.figure(figsize=(14, 6))
-    plt.plot(close.index, close.values, label="Close (GT)", alpha=0.65)
+    plt.plot(close.index, close.values, label="Close (GT)", alpha=0.8, color=COLOR_GT)
     plt.plot(
         target_x[valid],
         df.loc[valid, "price_pred_median"].values,
         label="Pred Price (median, t+1)",
         linewidth=2,
+        color=COLOR_PRED,
     )
 
     if lo_price is not None and hi_price is not None:
         lo = lo_price[valid].astype(float)
         hi = hi_price[valid].astype(float)
-        plt.fill_between(target_x[valid], lo, hi, alpha=0.2, label=band_name)
+        plt.fill_between(target_x[valid], lo, hi, alpha=0.25, label=band_name, color=COLOR_BAND)
 
     plt.title(title)
     plt.grid(True)
@@ -171,10 +176,10 @@ def plot_return_target_layer(
     ax1 = plt.subplot(2, 1, 1)
     ax2 = plt.subplot(2, 1, 2)
 
-    ax1.plot(target_x, pred.values, label=f"Pred Next Return ({pred_col})", linewidth=1.8, alpha=0.9)
-    ax1.plot(target_x, real_next.values, label="Real Next Return (GT)", linewidth=1.4, alpha=0.75)
+    ax1.plot(target_x, pred.values, label=f"Pred Next Return ({pred_col})", linewidth=1.8, alpha=0.9, color=COLOR_PRED)
+    ax1.plot(target_x, real_next.values, label="Real Next Return (GT)", linewidth=1.4, alpha=0.85, color=COLOR_GT)
     if band_lo is not None and band_hi is not None:
-        ax1.fill_between(target_x, band_lo.values, band_hi.values, alpha=0.18, label=resolved_band_label)
+        ax1.fill_between(target_x, band_lo.values, band_hi.values, alpha=0.25, label=resolved_band_label, color=COLOR_BAND)
     ax1.set_title(title)
     ax1.grid(True)
     ax1.legend()

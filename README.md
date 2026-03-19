@@ -90,16 +90,25 @@ pip install -r requirements.txt
 ### Market data
 
 Default path in `main.py`:
-- `market_info/BTCUSDT_1d_Binance.csv`
+- `market_info/cleaned/BTCUSDT_1d_Binance_cleaned.csv`
 
 Required columns:
 - `starttime` or `eventtime` (ms timestamp)
 - `close`
 
-### Black-box external forecast file
+### Black-box external forecast files
 
 Template:
 - `data/external_forecasts/blackbox_predictions_template.csv`
+
+Current discovery layout (auto-scanned):
+- `data/external_forecasts/<family>/<interval>/<run_id>/predictions_decision_aligned__target_<symbol>__init_<init_mode>__loss_<loss_mode>__tag_<run_tag>.csv`
+- `<family>`: usually `ft` or `hf`
+- `<interval>`: e.g. `1d`, `4h`
+- `<run_id>`: arbitrary string (e.g. `1`, `2`, `expA`)
+
+Example:
+- `data/external_forecasts/ft/1d/1/predictions_decision_aligned__target_bchusdt__init_pretrained__loss_native__tag_batch_bchusdt_to_bchusdt.csv`
 
 Required columns:
 - `ts`, `symbol`, `horizon`, `close_t`
@@ -126,10 +135,16 @@ Show CLI help:
 env\Scripts\python main.py --help
 ```
 
-Run full pipeline for one symbol:
+Run full pipeline for one symbol (auto-discover external file):
 
 ```powershell
 env\Scripts\python main.py --mode full --symbol BTCUSDT --interval 1d --enable-blackbox
+```
+
+Run one symbol with an explicit external csv:
+
+```powershell
+env\Scripts\python main.py --mode full --symbol BCHUSDT --interval 1d --external-csv "data/external_forecasts/ft/1d/1/predictions_decision_aligned__target_bchusdt__init_pretrained__loss_native__tag_batch_bchusdt_to_bchusdt.csv"
 ```
 
 Run only one experiment:
@@ -145,21 +160,21 @@ Run batch symbols:
 env\Scripts\python main.py --mode full --symbols BTCUSDT,ETHUSDT,LTCUSDT --interval 1d --enable-blackbox
 ```
 
-Batch + multi black-box prefixes (default is already `zeroshot,newLoss1,finetuned`):
+Batch + auto-discovered black-box models:
 
 ```powershell
-env\Scripts\python main.py --mode full --symbols BTCUSDT,ETHUSDT --interval 1d --enable-blackbox --external-prefixes zeroshot,newLoss1,finetuned
+env\Scripts\python main.py --mode full --symbols BTCUSDT,ETHUSDT --interval 1d --enable-blackbox
 ```
 
 Black-box filename convention:
 
-- `{prefix}_{SYMBOL}_{INTERVAL}_logreturn_predictions_decision_aligned.csv`
-- Example: `finetuned_BCHUSDT_1d_logreturn_predictions_decision_aligned.csv`
+- `predictions_decision_aligned__target_<symbol>__init_<init_mode>__loss_<loss_mode>__tag_<run_tag>.csv`
+- Example: `predictions_decision_aligned__target_bchusdt__init_pretrained__loss_native__tag_batch_bchusdt_to_bchusdt.csv`
 
-When batch mode finds multiple prefixes for the same symbol, outputs are auto-archived into:
+When black-box is enabled, outputs are mirrored to external folder hierarchy:
 
-- `reports/tables/{prefix}/...`
-- `reports/figures/{prefix}/...`
+- `reports/tables/<family>/<interval>/<run_id>/...`
+- `reports/figures/<family>/<interval>/<run_id>/...`
 
 If no external file is found (or black-box is disabled), outputs go to:
 
@@ -207,6 +222,12 @@ PowerShell example:
 powershell -ExecutionPolicy Bypass -File scripts/run_batch_full.ps1 -Symbols "BTCUSDT,ETHUSDT"
 ```
 
+Bash example:
+
+```bash
+bash scripts/run_batch_full.sh "BTCUSDT,ETHUSDT"
+```
+
 ### Auto interval policy
 
 The pipeline auto-adapts key runtime parameters by interval (`1d`, `4h`, `1h`, `15m`, `5m`):
@@ -217,29 +238,27 @@ The pipeline auto-adapts key runtime parameters by interval (`1d`, `4h`, `1h`, `
 
 The interval is parsed from the market filename pattern:
 
-- `{SYMBOL}_{INTERVAL}_Binance.csv`
+- `{SYMBOL}_{INTERVAL}_Binance_cleaned.csv`
 
 ## Output Artifacts
 
 ### Forecast outputs
 
-- `reports/tables/exp1_summary_metrics_{SYMBOL}_{INTERVAL}.json`
-- `reports/tables/exp1_whitebox_forecast_metrics_train_{SYMBOL}_{INTERVAL}.json`
-- `reports/tables/exp1_whitebox_forecast_metrics_val_{SYMBOL}_{INTERVAL}.json`
-- `reports/tables/exp1_whitebox_forecast_metrics_test_{SYMBOL}_{INTERVAL}.json`
-- `reports/tables/exp1_naive_forecast_metrics_test_{SYMBOL}_{INTERVAL}.json`
-- optional black-box metrics on test
+- White-box only: `reports/tables/whitebox_only/...`
+- Black-box enabled: `reports/tables/<family>/<interval>/<run_id>/...`
+- Includes `exp1_summary_metrics_*.json`, split/test metrics, optional black-box metrics
 
 ### Trading outputs
 
-- `reports/tables/exp2_summary_metrics_{SYMBOL}_{INTERVAL}.json`
-- per-variant backtest CSV and metric JSON files (`exp2_*`)
+- White-box only: `reports/tables/whitebox_only/...`
+- Black-box enabled: `reports/tables/<family>/<interval>/<run_id>/...`
+- Includes `exp2_summary_metrics_*.json` and per-variant `exp2_*` files
 
 ### Figures
 
-- Forecast figure(s)
-- Hawkes split figure
-- Backtest figure(s):
+- White-box only: `reports/figures/whitebox_only/...`
+- Black-box enabled: `reports/figures/<family>/<interval>/<run_id>/...`
+- Includes forecast figures and backtest figures:
   - top panel: price + buy/sell markers
   - bottom panel: strategy equity + buy-and-hold reference
 
@@ -250,12 +269,12 @@ This section highlights the key interpretation logic using the generated figures
 ### 1) Why close-price forecast plots can look deceptively good
 
 Relevant figure:
-- `reports/figures/exp1_whitebox_forecast_{SYMBOL}_{INTERVAL}.png`
+- `reports/figures/demo/exp1_whitebox_forecast_{SYMBOL}_{INTERVAL}.png`
 
 Example:
 
-![White-box close reconstruction](reports/figures/exp1_whitebox_forecast_BTCUSDT_1d.png)
-![White-box close reconstruction details](reports/figures/showcase_1.png)
+![White-box close reconstruction](reports/figures/demo/exp1_whitebox_forecast_BTCUSDT_1d.png)
+![White-box close reconstruction details](reports/figures/demo/showcase_1.png)
 
 The white-box model predicts next-bar return, then reconstructs next-bar price from current observed close:
 - `pred_price_next = close_t * exp(pred_return)`
@@ -265,11 +284,11 @@ Because this is rolling one-step reconstruction anchored to the latest true `clo
 ### 2) Use return-target plots as the primary forecast diagnostic
 
 Relevant figure:
-- `reports/figures/exp1_whitebox_return_target_test_{SYMBOL}_{INTERVAL}.png`
+- `reports/figures/demo/exp1_whitebox_return_target_test_{SYMBOL}_{INTERVAL}.png`
 
 Example:
 
-![White-box return target test](reports/figures/exp1_whitebox_return_target_test_BTCUSDT_1d.png)
+![White-box return target test](reports/figures/demo/exp1_whitebox_return_target_test_BTCUSDT_1d.png)
 
 How to read:
 - Top panel: predicted next return vs realized next return over time.
@@ -285,20 +304,20 @@ This is why return-level plots and metrics (`MSE/MAE/RMSE`) are more informative
 ### 3) How to interpret Hawkes ablation in trading layer (exp2)
 
 Relevant figures:
-- `reports/figures/exp2_white_native_{SYMBOL}_{INTERVAL}.png`
-- `reports/figures/exp2_white_hawkes_{SYMBOL}_{INTERVAL}.png`
+- `reports/figures/demo/exp2_white_native_{SYMBOL}_{INTERVAL}.png`
+- `reports/figures/demo/exp2_white_hawkes_{SYMBOL}_{INTERVAL}.png`
 - (if enabled) black-box counterparts: `exp2_black_native_*`, `exp2_black_hawkes_*`
 
 Examples:
 
-![Exp2 white native](reports/figures/exp2_white_native_BTCUSDT_1d.png)
+![Exp2 white native](reports/figures/demo/exp2_white_native_BTCUSDT_1d.png)
 
-![Exp2 white hawkes](reports/figures/exp2_white_hawkes_BTCUSDT_1d.png)
+![Exp2 white hawkes](reports/figures/demo/exp2_white_hawkes_BTCUSDT_1d.png)
 
 Relevant metrics:
-- `reports/tables/exp2_white_native_metrics_{SYMBOL}_{INTERVAL}.json`
-- `reports/tables/exp2_white_hawkes_metrics_{SYMBOL}_{INTERVAL}.json`
-- `reports/tables/exp2_summary_metrics_{SYMBOL}_{INTERVAL}.json`
+- `reports/tables/demo/exp2_white_native_metrics_{SYMBOL}_{INTERVAL}.json`
+- `reports/tables/demo/exp2_white_hawkes_metrics_{SYMBOL}_{INTERVAL}.json`
+- `reports/tables/demo/exp2_summary_metrics_{SYMBOL}_{INTERVAL}.json`
 
 Reading guide:
 - Compare equity curves against buy-and-hold in the same panel.
@@ -324,13 +343,15 @@ The buy-and-hold line is a normalized price benchmark:
 
 Output filenames and figure titles are auto-tagged by parsing the market file name with:
 
-- `{SYMBOL}_{INTERVAL}_Binance.csv`
+- `{SYMBOL}_{INTERVAL}_Binance_cleaned.csv`
 
 Example:
 
-- `BTCUSDT_1d_Binance.csv` -> `SYMBOL=BTCUSDT`, `INTERVAL=1d`
+- `BTCUSDT_1d_Binance_cleaned.csv` -> `SYMBOL=BTCUSDT`, `INTERVAL=1d`
 
 ## Notes
 
 - Current default execution mode is stateful full-notional style (`stateful_all_in`) to avoid repeated same-side orders.
 - You can switch to continuous target position mode via config if needed.
+
+
