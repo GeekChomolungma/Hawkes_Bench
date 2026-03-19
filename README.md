@@ -138,7 +138,7 @@ env\Scripts\python main.py --help
 Run full pipeline for one symbol (auto-discover external file):
 
 ```powershell
-env\Scripts\python main.py --mode full --symbol BTCUSDT --interval 1d --enable-blackbox
+env\Scripts\python main.py --mode full --symbol BTCUSDT --interval 1d --external-family ft --external-run-id 1 --enable-blackbox
 ```
 
 Run one symbol with an explicit external csv:
@@ -157,13 +157,13 @@ env\Scripts\python main.py --mode exp2 --symbol BTCUSDT --interval 1d --enable-b
 Run batch symbols:
 
 ```powershell
-env\Scripts\python main.py --mode full --symbols BTCUSDT,ETHUSDT,LTCUSDT --interval 1d --enable-blackbox
+env\Scripts\python main.py --mode full --symbols BTCUSDT,ETHUSDT,LTCUSDT --interval 1d --external-family ft --external-run-id 1 --enable-blackbox
 ```
 
 Batch + auto-discovered black-box models:
 
 ```powershell
-env\Scripts\python main.py --mode full --symbols BTCUSDT,ETHUSDT --interval 1d --enable-blackbox
+env\Scripts\python main.py --mode full --symbols BTCUSDT,ETHUSDT --interval 1d --external-family ft --external-run-id 1 --enable-blackbox
 ```
 
 Black-box filename convention:

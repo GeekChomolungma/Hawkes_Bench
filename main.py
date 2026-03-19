@@ -27,6 +27,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--symbols", default="")
     p.add_argument("--market-dir", default="market_info/cleaned")
     p.add_argument("--external-dir", default="data/external_forecasts")
+    p.add_argument("--external-family", default="ft")
+    p.add_argument("--external-run-id", default="1")
 
     # shared experiment controls
     p.add_argument("--enable-blackbox", action="store_true", default=True)
@@ -60,6 +62,8 @@ def main() -> None:
             val_end=args.val_end,
             enable_blackbox=enable_blackbox,
             external_dir=args.external_dir,
+            external_family=args.external_family,
+            external_run_id=args.external_run_id,
             hawkes_quantiles=hawkes_quantiles,
             hawkes_online_update_enabled=args.hawkes_online_update,
             exp1_debug_tables=args.exp1_debug_tables,
@@ -74,6 +78,8 @@ def main() -> None:
                 external_dir=args.external_dir,
                 symbol=args.symbol,
                 interval=args.interval,
+                family=args.external_family,
+                run_id=args.external_run_id,
             )
             if candidates:
                 output_subdir, external_csv = candidates[0]

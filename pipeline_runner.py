@@ -60,6 +60,8 @@ def resolve_external_csv_candidates(
     external_dir: str,
     symbol: str,
     interval: str,
+    family: str,
+    run_id: str,
 ) -> list[tuple[str, str]]:
     """
     Discover external forecast files for one (symbol, interval) pair.
@@ -87,43 +89,36 @@ def resolve_external_csv_candidates(
     root = Path(external_dir)
     sym_u = symbol.upper()
     itv_l = interval.lower()
+    fam = family.strip()
+    rid = run_id.strip()
 
     # Collected entries:
     # (base_subdir, model_slug, path)
     raw_entries: list[tuple[str, str, str]] = []
 
-    # New format (current business rule):
+    # Explicit business rule:
     #   {external_dir}/{family}/{interval}/{run_id}/predictions_decision_aligned__target_...csv
-    # where family is typically ft/hf and run_id is arbitrary (e.g. "1").
-    for family_dir in sorted([d for d in root.iterdir() if d.is_dir()]):
-        interval_dirs = [d for d in family_dir.iterdir() if d.is_dir() and d.name.lower() == itv_l]
-        if not interval_dirs:
+    run_dir = root / fam / interval / rid
+    if not run_dir.exists():
+        return []
+    if not run_dir.is_dir():
+        return []
+
+    for p in sorted(run_dir.glob("predictions_decision_aligned__target_*__init_*__loss_*__tag_*.csv")):
+        m = _NEW_EXTERNAL_RE.match(p.name)
+        if not m:
+            continue
+        if m.group("symbol").upper() != sym_u:
             continue
 
-        for interval_dir in sorted(interval_dirs):
-            run_dirs = sorted([d for d in interval_dir.iterdir() if d.is_dir()])
-            if not run_dirs:
-                # Allow missing run_id layer as fallback, though preferred layout has it.
-                run_dirs = [interval_dir]
+        init_mode = _sanitize_tag(m.group("init_mode").lower())
+        loss_mode = _sanitize_tag(m.group("loss_mode").lower())
+        tag = _sanitize_tag(m.group("tag").lower())
+        model_slug = f"init_{init_mode}__loss_{loss_mode}__tag_{tag}"
 
-            for run_dir in run_dirs:
-                for p in sorted(run_dir.glob("predictions_decision_aligned__target_*__init_*__loss_*__tag_*.csv")):
-                    m = _NEW_EXTERNAL_RE.match(p.name)
-                    if not m:
-                        continue
-                    if m.group("symbol").upper() != sym_u:
-                        continue
-
-                    init_mode = _sanitize_tag(m.group("init_mode").lower())
-                    loss_mode = _sanitize_tag(m.group("loss_mode").lower())
-                    tag = _sanitize_tag(m.group("tag").lower())
-                    model_slug = f"init_{init_mode}__loss_{loss_mode}__tag_{tag}"
-
-                    # Mirror external folder hierarchy under reports.
-                    base_subdir = f"{family_dir.name}/{interval_dir.name}"
-                    if run_dir != interval_dir:
-                        base_subdir = f"{base_subdir}/{run_dir.name}"
-                    raw_entries.append((base_subdir, model_slug, str(p)))
+        # Mirror explicit external folder hierarchy under reports.
+        base_subdir = f"{fam}/{interval}/{rid}"
+        raw_entries.append((base_subdir, model_slug, str(p)))
 
     # Build stable output keys:
     # - If one model under same base_subdir, use base_subdir directly.
@@ -296,6 +291,8 @@ def run_pipeline_batch(
     val_end: str,
     enable_blackbox: bool,
     external_dir: str,
+    external_family: str,
+    external_run_id: str,
     hawkes_quantiles: tuple[float, ...],
     hawkes_online_update_enabled: bool,
     exp1_debug_tables: bool,
@@ -311,6 +308,8 @@ def run_pipeline_batch(
                 external_dir=external_dir,
                 symbol=symbol,
                 interval=interval,
+                family=external_family,
+                run_id=external_run_id,
             )
             if enable_blackbox
             else []
