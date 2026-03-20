@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from pathlib import Path
 
@@ -71,15 +71,16 @@ def run_exp1_forecast_eval(
     wb_cfg: WhiteBoxConfig,
     out_cfg: OutputConfig,
     ext_cfg: ExternalForecastConfig | None = None,
+    enable_whitebox: bool = False,
 ) -> dict:
     """
     Experiment 1: forecast-layer evaluation.
 
     Core artifacts (always):
     - exp1_summary_metrics_*.json
-    - exp1_whitebox_forecast_metrics_test_*.json
-    - exp1_naive_forecast_metrics_test_*.json
-    - exp1_blackbox_forecast_metrics_test_*.json (if enabled)
+    - exp1_whitebox_forecast_metrics_test_*.json (if white-box enabled)
+    - exp1_naive_forecast_metrics_test_*.json (if white-box enabled)
+    - exp1_blackbox_forecast_metrics_test_*.json (if black-box enabled)
 
     Optional debug artifacts are controlled by OutputConfig.exp1_save_debug_tables.
     """
@@ -99,79 +100,11 @@ def run_exp1_forecast_eval(
     mk = meta["key"]
     mt = meta["title_label"]
 
-    white = WhiteBoxForecaster(cfg=wb_cfg).forecast_frame(close=close, returns=returns, symbol=data_cfg.symbol)
-    white_idx = white.set_index("ts").index
-    idx_train, idx_val, idx_test, split_info = _build_exp1_split_indices(white_idx=white_idx, df=df, data_cfg=data_cfg)
+    white = None
+    if enable_whitebox:
+        white = WhiteBoxForecaster(cfg=wb_cfg).forecast_frame(close=close, returns=returns, symbol=data_cfg.symbol)
 
-    white_metrics_all = evaluate_forecast_frame(
-        forecast_df=white,
-        returns=returns,
-        metrics_out_path=f"{out_cfg.table_dir}/exp1_whitebox_forecast_metrics_all_{mk}.json" if debug_tables else None,
-        rows_out_path=f"{out_cfg.table_dir}/exp1_whitebox_forecast_rows_all_{mk}.csv" if debug_tables else None,
-    )
-    white_metrics_train = evaluate_forecast_frame(
-        forecast_df=white[white["ts"].isin(idx_train)],
-        returns=returns,
-        metrics_out_path=f"{out_cfg.table_dir}/exp1_whitebox_forecast_metrics_train_{mk}.json" if debug_tables else None,
-    )
-
-    if len(idx_val) > 0:
-        white_metrics_val = evaluate_forecast_frame(
-            forecast_df=white[white["ts"].isin(idx_val)],
-            returns=returns,
-            metrics_out_path=f"{out_cfg.table_dir}/exp1_whitebox_forecast_metrics_val_{mk}.json" if debug_tables else None,
-        )
-    else:
-        white_metrics_val = {}
-
-    white_test = white[white["ts"].isin(idx_test)].copy()
-    white_metrics_test = evaluate_forecast_frame(
-        forecast_df=white_test,
-        returns=returns,
-        metrics_out_path=f"{out_cfg.table_dir}/exp1_whitebox_forecast_metrics_test_{mk}.json",
-        rows_out_path=f"{out_cfg.table_dir}/exp1_whitebox_forecast_rows_test_{mk}.csv" if debug_tables else None,
-    )
-    if debug_tables:
-        save_dataframe(white, f"{out_cfg.table_dir}/exp1_whitebox_forecast_frame_{mk}.csv", index=False)
-
-    # Visualize forecast and return target layers for test split only
-    close_test = close[close.index >= idx_test.min()] if len(idx_test) > 0 else close.iloc[0:0]
-
-    plot_forecast_layer(
-        close=close_test,
-        forecast_df=white_test,
-        title=f"{mt} | White-box Forecast (Test)",
-        out_path=f"{out_cfg.figure_dir}/exp1_whitebox_forecast_{mk}.png",
-    )
-    plot_return_target_layer(
-        returns=returns,
-        forecast_df=white_test,
-        title=f"{mt} | White-box Return Target (Test)",
-        out_path=f"{out_cfg.figure_dir}/exp1_whitebox_return_target_test_{mk}.png",
-    )
-
-    # Naive baseline for leakage sanity check: predict r_{t+1} with r_t
-    naive_df = white[["ts", "symbol", "horizon", "close_t"]].copy()
-    naive_df["mu_pred"] = returns.reindex(white["ts"]).to_numpy()
-    naive_test = evaluate_forecast_frame(
-        forecast_df=naive_df[naive_df["ts"].isin(idx_test)],
-        returns=returns,
-        metrics_out_path=f"{out_cfg.table_dir}/exp1_naive_forecast_metrics_test_{mk}.json",
-    )
-
-    out = {
-        "split": split_info,
-        "whitebox": {
-            "all": white_metrics_all,
-            "train": white_metrics_train,
-            "val": white_metrics_val,
-            "test": white_metrics_test,
-        },
-        "naive_baseline_test": naive_test,
-    }
-    save_metrics(out, f"{out_cfg.table_dir}/exp1_summary_metrics_{mk}.json")
-
-    # Black box evaluation
+    black = None
     if ext_cfg is not None and ext_cfg.enabled:
         black_raw = load_external_forecast(
             ForecastLoadConfig(
@@ -182,12 +115,88 @@ def run_exp1_forecast_eval(
             )
         )
         black = align_forecast_with_market(black_raw, close=close, symbol=data_cfg.symbol)
-        black_idx = black.set_index("ts").index
 
-        # Fair comparison: evaluate white and black on the same test decision timestamps.
+    if white is None and black is None:
+        raise ValueError("Both white-box and black-box are disabled for Exp1. Nothing to evaluate.")
+
+    split_index = white.set_index("ts").index if white is not None else close.index
+    idx_train, idx_val, idx_test, split_info = _build_exp1_split_indices(white_idx=split_index, df=df, data_cfg=data_cfg)
+
+    out = {
+        "split": split_info,
+        "whitebox": {"enabled": False},
+        "naive_baseline_test": {"enabled": False},
+    }
+
+    naive_df = None
+    if white is not None:
+        white_metrics_all = evaluate_forecast_frame(
+            forecast_df=white,
+            returns=returns,
+            metrics_out_path=f"{out_cfg.table_dir}/exp1_whitebox_forecast_metrics_all_{mk}.json" if debug_tables else None,
+            rows_out_path=f"{out_cfg.table_dir}/exp1_whitebox_forecast_rows_all_{mk}.csv" if debug_tables else None,
+        )
+        white_metrics_train = evaluate_forecast_frame(
+            forecast_df=white[white["ts"].isin(idx_train)],
+            returns=returns,
+            metrics_out_path=f"{out_cfg.table_dir}/exp1_whitebox_forecast_metrics_train_{mk}.json" if debug_tables else None,
+        )
+
+        if len(idx_val) > 0:
+            white_metrics_val = evaluate_forecast_frame(
+                forecast_df=white[white["ts"].isin(idx_val)],
+                returns=returns,
+                metrics_out_path=f"{out_cfg.table_dir}/exp1_whitebox_forecast_metrics_val_{mk}.json" if debug_tables else None,
+            )
+        else:
+            white_metrics_val = {}
+
+        white_test = white[white["ts"].isin(idx_test)].copy()
+        white_metrics_test = evaluate_forecast_frame(
+            forecast_df=white_test,
+            returns=returns,
+            metrics_out_path=f"{out_cfg.table_dir}/exp1_whitebox_forecast_metrics_test_{mk}.json",
+            rows_out_path=f"{out_cfg.table_dir}/exp1_whitebox_forecast_rows_test_{mk}.csv" if debug_tables else None,
+        )
+
+        if debug_tables:
+            save_dataframe(white, f"{out_cfg.table_dir}/exp1_whitebox_forecast_frame_{mk}.csv", index=False)
+
+        close_test = close[close.index >= idx_test.min()] if len(idx_test) > 0 else close.iloc[0:0]
+        plot_forecast_layer(
+            close=close_test,
+            forecast_df=white_test,
+            title=f"{mt} | White-box Forecast (Test)",
+            out_path=f"{out_cfg.figure_dir}/exp1_whitebox_forecast_{mk}.png",
+        )
+        plot_return_target_layer(
+            returns=returns,
+            forecast_df=white_test,
+            title=f"{mt} | White-box Return Target (Test)",
+            out_path=f"{out_cfg.figure_dir}/exp1_whitebox_return_target_test_{mk}.png",
+        )
+
+        # Naive baseline for leakage sanity check: predict r_{t+1} with r_t
+        naive_df = white[["ts", "symbol", "horizon", "close_t"]].copy()
+        naive_df["mu_pred"] = returns.reindex(white["ts"]).to_numpy()
+        naive_test = evaluate_forecast_frame(
+            forecast_df=naive_df[naive_df["ts"].isin(idx_test)],
+            returns=returns,
+            metrics_out_path=f"{out_cfg.table_dir}/exp1_naive_forecast_metrics_test_{mk}.json",
+        )
+
+        out["whitebox"] = {
+            "all": white_metrics_all,
+            "train": white_metrics_train,
+            "val": white_metrics_val,
+            "test": white_metrics_test,
+        }
+        out["naive_baseline_test"] = naive_test
+
+    if black is not None:
+        black_idx = black.set_index("ts").index
         idx_test_aligned = idx_test.intersection(black_idx)
         black_test = black[black["ts"].isin(idx_test_aligned)].copy()
-        white_test_aligned = white[white["ts"].isin(idx_test_aligned)]
 
         black_metrics = evaluate_forecast_frame(
             forecast_df=black_test,
@@ -195,23 +204,11 @@ def run_exp1_forecast_eval(
             metrics_out_path=f"{out_cfg.table_dir}/exp1_blackbox_forecast_metrics_test_{mk}.json",
             rows_out_path=f"{out_cfg.table_dir}/exp1_blackbox_forecast_rows_test_{mk}.csv" if debug_tables else None,
         )
-        white_metrics_test_aligned = evaluate_forecast_frame(
-            forecast_df=white_test_aligned,
-            returns=returns,
-            metrics_out_path=f"{out_cfg.table_dir}/exp1_whitebox_forecast_metrics_test_aligned_blackbox_{mk}.json" if debug_tables else None,
-            rows_out_path=f"{out_cfg.table_dir}/exp1_whitebox_forecast_rows_test_aligned_blackbox_{mk}.csv" if debug_tables else None,
-        )
-        naive_test_aligned = evaluate_forecast_frame(
-            forecast_df=naive_df[naive_df["ts"].isin(idx_test_aligned)],
-            returns=returns,
-            metrics_out_path=f"{out_cfg.table_dir}/exp1_naive_forecast_metrics_test_aligned_blackbox_{mk}.json" if debug_tables else None,
-        )
 
         if debug_tables:
             save_dataframe(black, f"{out_cfg.table_dir}/exp1_blackbox_forecast_frame_{mk}.csv", index=False)
 
         close_test_aligned = close[close.index >= idx_test_aligned.min()] if len(idx_test_aligned) > 0 else close.iloc[0:0]
-
         plot_forecast_layer(
             close=close_test_aligned,
             forecast_df=black_test,
@@ -232,12 +229,32 @@ def run_exp1_forecast_eval(
         )
 
         out["blackbox_test"] = black_metrics
+        if white is not None and naive_df is not None:
+            white_test_aligned = white[white["ts"].isin(idx_test_aligned)]
+            white_metrics_test_aligned = evaluate_forecast_frame(
+                forecast_df=white_test_aligned,
+                returns=returns,
+                metrics_out_path=f"{out_cfg.table_dir}/exp1_whitebox_forecast_metrics_test_aligned_blackbox_{mk}.json" if debug_tables else None,
+                rows_out_path=f"{out_cfg.table_dir}/exp1_whitebox_forecast_rows_test_aligned_blackbox_{mk}.csv" if debug_tables else None,
+            )
+            naive_test_aligned = evaluate_forecast_frame(
+                forecast_df=naive_df[naive_df["ts"].isin(idx_test_aligned)],
+                returns=returns,
+                metrics_out_path=f"{out_cfg.table_dir}/exp1_naive_forecast_metrics_test_aligned_blackbox_{mk}.json" if debug_tables else None,
+            )
+            aligned_white = white_metrics_test_aligned
+            aligned_naive = naive_test_aligned
+        else:
+            aligned_white = {"enabled": False}
+            aligned_naive = {"enabled": False}
+
         out["aligned_test_window"] = {
             "rows": int(len(idx_test_aligned)),
-            "whitebox": white_metrics_test_aligned,
+            "whitebox": aligned_white,
             "blackbox": black_metrics,
-            "naive": naive_test_aligned,
+            "naive": aligned_naive,
         }
-        save_metrics(out, f"{out_cfg.table_dir}/exp1_summary_metrics_{mk}.json")
 
+    save_metrics(out, f"{out_cfg.table_dir}/exp1_summary_metrics_{mk}.json")
     return out
+

@@ -138,7 +138,7 @@ env\Scripts\python main.py --help
 Run full pipeline for one symbol (auto-discover external file):
 
 ```powershell
-env\Scripts\python main.py --mode full --symbol BTCUSDT --interval 1d --external-family ft --external-run-id 1 --enable-blackbox
+env\Scripts\python main.py --mode full --symbol BTCUSDT --interval 1d --external-family ft --external-run-id 1 --enable-blackbox --whitebox-mode off
 ```
 
 Run one symbol with an explicit external csv:
@@ -150,21 +150,27 @@ env\Scripts\python main.py --mode full --symbol BCHUSDT --interval 1d --external
 Run only one experiment:
 
 ```powershell
-env\Scripts\python main.py --mode exp1 --symbol BTCUSDT --interval 1d --enable-blackbox
-env\Scripts\python main.py --mode exp2 --symbol BTCUSDT --interval 1d --enable-blackbox
+env\Scripts\python main.py --mode exp1 --symbol BTCUSDT --interval 1d --enable-blackbox --whitebox-mode always
+env\Scripts\python main.py --mode exp2 --symbol BTCUSDT --interval 1d --enable-blackbox --whitebox-mode first
 ```
 
 Run batch symbols:
 
 ```powershell
-env\Scripts\python main.py --mode full --symbols BTCUSDT,ETHUSDT,LTCUSDT --interval 1d --external-family ft --external-run-id 1 --enable-blackbox
+env\Scripts\python main.py --mode full --symbols BTCUSDT,ETHUSDT,LTCUSDT --interval 1d --external-family ft --external-run-id 1 --enable-blackbox --whitebox-mode first
 ```
 
 Batch + auto-discovered black-box models:
 
 ```powershell
-env\Scripts\python main.py --mode full --symbols BTCUSDT,ETHUSDT --interval 1d --external-family ft --external-run-id 1 --enable-blackbox
+env\Scripts\python main.py --mode full --symbols BTCUSDT,ETHUSDT --interval 1d --external-family ft --external-run-id 1 --enable-blackbox --whitebox-mode first
 ```
+
+White-box mode control (`--whitebox-mode`):
+
+- `always`: white-box always enabled
+- `first`: white-box only for the first discovered external file in batch
+- `off`: white-box fully disabled
 
 Black-box filename convention:
 
@@ -173,13 +179,13 @@ Black-box filename convention:
 
 When black-box is enabled, outputs are mirrored to external folder hierarchy:
 
-- `reports/tables/<family>/<interval>/<run_id>/...`
-- `reports/figures/<family>/<interval>/<run_id>/...`
+- `reports/tables/<family>/<interval>/<run_id>/<symbol>/...`
+- `reports/figures/<family>/<interval>/<run_id>/<symbol>/...`
 
 If no external file is found (or black-box is disabled), outputs go to:
 
-- `reports/tables/whitebox_only/...`
-- `reports/figures/whitebox_only/...`
+- `reports/tables/whitebox_only/<symbol>/...`
+- `reports/figures/whitebox_only/<symbol>/...`
 
 ### 2) Data cleaning entry (`data/clean_market_info.py`)
 
@@ -219,13 +225,13 @@ It writes `verify_summary.csv` and reports PASS/FAIL for:
 PowerShell example:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File scripts/run_batch_full.ps1 -Symbols "BTCUSDT,ETHUSDT"
+powershell -ExecutionPolicy Bypass -File scripts/run_batch_full.ps1 -Symbols "BTCUSDT,ETHUSDT" -WhiteboxMode first
 ```
 
 Bash example:
 
 ```bash
-bash scripts/run_batch_full.sh "BTCUSDT,ETHUSDT"
+WHITEBOX_MODE=first bash scripts/run_batch_full.sh "BTCUSDT,ETHUSDT"
 ```
 
 ### Auto interval policy
@@ -244,20 +250,20 @@ The interval is parsed from the market filename pattern:
 
 ### Forecast outputs
 
-- White-box only: `reports/tables/whitebox_only/...`
-- Black-box enabled: `reports/tables/<family>/<interval>/<run_id>/...`
+- White-box only: `reports/tables/whitebox_only/<symbol>/...`
+- Black-box enabled: `reports/tables/<family>/<interval>/<run_id>/<symbol>/...`
 - Includes `exp1_summary_metrics_*.json`, split/test metrics, optional black-box metrics
 
 ### Trading outputs
 
-- White-box only: `reports/tables/whitebox_only/...`
-- Black-box enabled: `reports/tables/<family>/<interval>/<run_id>/...`
+- White-box only: `reports/tables/whitebox_only/<symbol>/...`
+- Black-box enabled: `reports/tables/<family>/<interval>/<run_id>/<symbol>/...`
 - Includes `exp2_summary_metrics_*.json` and per-variant `exp2_*` files
 
 ### Figures
 
-- White-box only: `reports/figures/whitebox_only/...`
-- Black-box enabled: `reports/figures/<family>/<interval>/<run_id>/...`
+- White-box only: `reports/figures/whitebox_only/<symbol>/...`
+- Black-box enabled: `reports/figures/<family>/<interval>/<run_id>/<symbol>/...`
 - Includes forecast figures and backtest figures:
   - top panel: price + buy/sell markers
   - bottom panel: strategy equity + buy-and-hold reference
@@ -353,5 +359,9 @@ Example:
 
 - Current default execution mode is stateful full-notional style (`stateful_all_in`) to avoid repeated same-side orders.
 - You can switch to continuous target position mode via config if needed.
+
+
+
+
 
 

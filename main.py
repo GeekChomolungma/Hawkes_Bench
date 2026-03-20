@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import argparse
 import json
@@ -33,6 +33,12 @@ def build_parser() -> argparse.ArgumentParser:
     # shared experiment controls
     p.add_argument("--enable-blackbox", action="store_true", default=True)
     p.add_argument("--disable-blackbox", action="store_true")
+    p.add_argument("--whitebox-mode", choices=["always", "first", "off"], default="off")
+
+    # legacy compatibility flags (mapped to whitebox-mode)
+    p.add_argument("--enable-whitebox", action="store_true", default=False)
+    p.add_argument("--whitebox-first-only", action="store_true", default=False)
+
     p.add_argument("--train-end", default="2022-12-31")
     p.add_argument("--val-end", default="2024-12-31")
     p.add_argument("--hawkes-quantiles", default="0.9", help="comma-separated, e.g. 0.85,0.9,0.95")
@@ -45,11 +51,28 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
+def _resolve_whitebox_mode(args: argparse.Namespace) -> str:
+    mode = (args.whitebox_mode or "off").strip().lower()
+
+    # Legacy override behavior:
+    # --enable-whitebox --whitebox-first-only => first
+    # --enable-whitebox => always
+    # --whitebox-first-only => first
+    if args.enable_whitebox and args.whitebox_first_only:
+        return "first"
+    if args.enable_whitebox:
+        return "always"
+    if args.whitebox_first_only:
+        return "first"
+    return mode
+
+
 def main() -> None:
     args = build_parser().parse_args()
 
     enable_blackbox = bool(args.enable_blackbox and not args.disable_blackbox)
     hawkes_quantiles = parse_cli_quantiles(args.hawkes_quantiles)
+    whitebox_mode = _resolve_whitebox_mode(args)
 
     symbols = parse_cli_list(args.symbols)
     if symbols:
@@ -61,6 +84,7 @@ def main() -> None:
             train_end=args.train_end,
             val_end=args.val_end,
             enable_blackbox=enable_blackbox,
+            whitebox_mode=whitebox_mode,
             external_dir=args.external_dir,
             external_family=args.external_family,
             external_run_id=args.external_run_id,
@@ -73,6 +97,7 @@ def main() -> None:
         market_csv = args.market_csv or f"market_info/cleaned/{args.symbol}_{args.interval}_Binance_cleaned.csv"
         external_csv = args.external_csv
         output_subdir = None
+
         if enable_blackbox and not external_csv:
             candidates = resolve_external_csv_candidates(
                 external_dir=args.external_dir,
@@ -83,9 +108,17 @@ def main() -> None:
             )
             if candidates:
                 output_subdir, external_csv = candidates[0]
+                output_subdir = f"{output_subdir}/{args.symbol.lower()}"
                 print(f"[AUTO] single-mode external selected: {output_subdir} -> {external_csv}")
             else:
                 print(f"[WARN] no external forecast discovered for {args.symbol} {args.interval}, black-box will be disabled.")
+
+        single_enable_whitebox = whitebox_mode != "off"
+        if output_subdir is None and enable_blackbox and external_csv:
+            output_subdir = f"{args.external_family}/{args.interval}/{args.external_run_id}/{args.symbol.lower()}"
+        if output_subdir is None and single_enable_whitebox and not enable_blackbox:
+            output_subdir = f"whitebox_only/{args.symbol.lower()}"
+
         results = {
             args.symbol: run_pipeline_for_market(
                 mode=args.mode,
@@ -95,6 +128,7 @@ def main() -> None:
                 train_end=args.train_end,
                 val_end=args.val_end,
                 enable_blackbox=enable_blackbox,
+                enable_whitebox=single_enable_whitebox,
                 external_csv=external_csv,
                 hawkes_quantiles=hawkes_quantiles,
                 hawkes_online_update_enabled=args.hawkes_online_update,

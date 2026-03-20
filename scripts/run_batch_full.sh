@@ -13,6 +13,7 @@ set -euo pipefail
 #   EXTERNAL_FAMILY=ft
 #   EXTERNAL_RUN_ID=1
 #   ENABLE_BLACKBOX=1
+#   WHITEBOX_MODE=first   # always | first | off
 #   PYTHON_BIN=python
 
 SYMBOLS="${1:-BTCUSDT,ETHUSDT,LTCUSDT,DOGEUSDT,XRPUSDT,BNBUSDT,BCHUSDT,ZECUSDT}"
@@ -24,6 +25,7 @@ HAWKES_Q="${HAWKES_Q:-0.9}"
 EXTERNAL_FAMILY="${EXTERNAL_FAMILY:-ft}"
 EXTERNAL_RUN_ID="${EXTERNAL_RUN_ID:-1}"
 ENABLE_BLACKBOX="${ENABLE_BLACKBOX:-1}"
+WHITEBOX_MODE="${WHITEBOX_MODE:-first}"
 PYTHON_BIN="${PYTHON_BIN:-python}"
 
 BLACKBOX_FLAG="--disable-blackbox"
@@ -40,4 +42,5 @@ ${PYTHON_BIN} main.py \
   --external-family "${EXTERNAL_FAMILY}" \
   --external-run-id "${EXTERNAL_RUN_ID}" \
   --hawkes-quantiles "${HAWKES_Q}" \
+  --whitebox-mode "${WHITEBOX_MODE}" \
   ${BLACKBOX_FLAG}

@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from pathlib import Path
 
@@ -114,6 +114,7 @@ def run_exp2_hawkes_ablation(
     bt_cfg: BacktestConfig,
     out_cfg: OutputConfig,
     ext_cfg: ExternalForecastConfig | None = None,
+    enable_whitebox: bool = False,
 ) -> dict:
     """
     Experiment 2 (test-focused):
@@ -148,11 +149,13 @@ def run_exp2_hawkes_ablation(
     mk = meta["key"]
     mt = meta["title_label"]
 
-    white = WhiteBoxForecaster(cfg=wb_cfg).forecast_frame(close=close, returns=returns, symbol=data_cfg.symbol)
-    white = white.set_index("ts").sort_index()
-
-    idx_all = white.index
+    idx_all = close.index
     idx_train, idx_val, idx_test_base, split_info = _build_exp2_split_indices(idx_all=idx_all, df=df, data_cfg=data_cfg)
+
+    white = None
+    if enable_whitebox:
+        white = WhiteBoxForecaster(cfg=wb_cfg).forecast_frame(close=close, returns=returns, symbol=data_cfg.symbol)
+        white = white.set_index("ts").sort_index()
 
     black = None
     if ext_cfg is not None and ext_cfg.enabled:
@@ -166,16 +169,19 @@ def run_exp2_hawkes_ablation(
         )
         black = align_forecast_with_market(black_raw, close=close, symbol=data_cfg.symbol).set_index("ts").sort_index()
 
+    if white is None and black is None:
+        raise ValueError("Both white-box and black-box are disabled for Exp2. Nothing to backtest.")
+
     idx_test = idx_test_base
     if black is not None:
         idx_test = idx_test.intersection(black.index)
 
-    close_test = close.reindex(idx_test).dropna()
-    white_test = white.reindex(idx_test).dropna()
-    black_test = black.reindex(idx_test).dropna() if black is not None else None
-
     if len(idx_test) == 0:
         raise ValueError("Exp2 test index is empty after alignment. Check split dates and external forecast coverage.")
+
+    close_test = close.reindex(idx_test).dropna()
+    white_test = white.reindex(idx_test).dropna() if white is not None else None
+    black_test = black.reindex(idx_test).dropna() if black is not None else None
 
     unit = hawkes_cfg.time_unit if hawkes_cfg.time_unit in {"D", "s"} else "D"
     online_update_enabled = bool(getattr(hawkes_cfg, "online_update_enabled", False))
@@ -187,6 +193,8 @@ def run_exp2_hawkes_ablation(
     out: dict = {
         "split": split_info,
         "test_rows": int(len(idx_test)),
+        "whitebox_enabled": bool(white is not None),
+        "blackbox_enabled": bool(black is not None),
         "hawkes_fit_policy": {
             "online_update_enabled": online_update_enabled,
             "fit_window": "train" if online_update_enabled else "train+val",
@@ -237,13 +245,14 @@ def run_exp2_hawkes_ablation(
 
     # case 1: no Hawkes risk adjustment, i.e. lambda=0, for both white-box and black-box (if available)
     lam_zero = pd.Series(0.0, index=idx_test)
-    out["no_hawkes"]["white"] = _run_case(
-        case_tag="no_hawkes",
-        branch_tag="white",
-        forecast_df=white_test,
-        lam_case=lam_zero,
-        use_hawkes=False,
-    )
+    if white_test is not None:
+        out["no_hawkes"]["white"] = _run_case(
+            case_tag="no_hawkes",
+            branch_tag="white",
+            forecast_df=white_test,
+            lam_case=lam_zero,
+            use_hawkes=False,
+        )
 
     if black_test is not None:
         out["no_hawkes"]["black"] = _run_case(
@@ -270,14 +279,16 @@ def run_exp2_hawkes_ablation(
         out["hawkes"][q_tag] = {
             "event_threshold_quantile": float(q),
             "event_threshold_tau": float(tau),
-            "white": _run_case(
+        }
+
+        if white_test is not None:
+            out["hawkes"][q_tag]["white"] = _run_case(
                 case_tag=f"hawkes_{q_tag}",
                 branch_tag="white",
                 forecast_df=white_test,
                 lam_case=lam_test,
                 use_hawkes=True,
-            ),
-        }
+            )
 
         if black_test is not None:
             out["hawkes"][q_tag]["black"] = _run_case(

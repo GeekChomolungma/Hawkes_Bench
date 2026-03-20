@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import re
 from dataclasses import asdict
@@ -214,6 +214,7 @@ def run_pipeline_for_market(
     train_end: str,
     val_end: str,
     enable_blackbox: bool,
+    enable_whitebox: bool,
     external_csv: str | None,
     hawkes_quantiles: tuple[float, ...],
     hawkes_online_update_enabled: bool,
@@ -245,6 +246,9 @@ def run_pipeline_for_market(
         f"hawkes_time_unit={hawkes_cfg.time_unit}",
     )
 
+    if (not enable_whitebox) and (not ext_cfg.enabled):
+        raise ValueError("Both white-box and black-box are disabled. Nothing to run.")
+
     out: dict = {
         "meta": {
             "mode": mode,
@@ -265,6 +269,7 @@ def run_pipeline_for_market(
             wb_cfg=wb_cfg,
             out_cfg=out_cfg,
             ext_cfg=ext_cfg,
+            enable_whitebox=enable_whitebox,
         )
 
     if mode in {"full", "exp2"}:
@@ -277,6 +282,7 @@ def run_pipeline_for_market(
             bt_cfg=bt_cfg,
             out_cfg=out_cfg,
             ext_cfg=ext_cfg,
+            enable_whitebox=enable_whitebox,
         )
 
     return out
@@ -290,6 +296,7 @@ def run_pipeline_batch(
     train_end: str,
     val_end: str,
     enable_blackbox: bool,
+    whitebox_mode: str,
     external_dir: str,
     external_family: str,
     external_run_id: str,
@@ -299,10 +306,17 @@ def run_pipeline_batch(
     exp2_debug_tables: bool,
 ) -> dict[str, dict]:
     results: dict[str, dict] = {}
+    whitebox_has_run = False
+
+    mode_norm = (whitebox_mode or "off").strip().lower()
+    if mode_norm not in {"always", "first", "off"}:
+        raise ValueError(f"Unknown whitebox_mode: {whitebox_mode}")
+
     for symbol in symbols:
         market_csv = resolve_market_csv(market_dir=market_dir, symbol=symbol, interval=interval)
         print(f"\n[PIPELINE] {symbol} {interval}")
         results[symbol] = {}
+
         candidates = (
             resolve_external_csv_candidates(
                 external_dir=external_dir,
@@ -316,6 +330,12 @@ def run_pipeline_batch(
         )
 
         if enable_blackbox and not candidates:
+            if mode_norm == "off":
+                msg = f"no external forecast candidates found for {symbol} {interval}, and white-box mode is off. skip."
+                print(f"[WARN] {msg}")
+                results[symbol]["skipped"] = {"reason": msg}
+                continue
+
             print(f"[WARN] no external forecast candidates found for {symbol} {interval}, run white-box only.")
             results[symbol]["whitebox_only"] = run_pipeline_for_market(
                 mode=mode,
@@ -325,16 +345,22 @@ def run_pipeline_batch(
                 train_end=train_end,
                 val_end=val_end,
                 enable_blackbox=False,
+                enable_whitebox=True,
                 external_csv=None,
                 hawkes_quantiles=hawkes_quantiles,
                 hawkes_online_update_enabled=hawkes_online_update_enabled,
                 exp1_debug_tables=exp1_debug_tables,
                 exp2_debug_tables=exp2_debug_tables,
-                output_subdir="whitebox_only",
+                output_subdir=f"whitebox_only/{symbol.lower()}",
             )
+            if mode_norm == "first":
+                whitebox_has_run = True
             continue
 
         if not enable_blackbox:
+            if mode_norm == "off":
+                raise ValueError("Both black-box and white-box are disabled in batch mode. Nothing to run.")
+
             results[symbol]["whitebox_only"] = run_pipeline_for_market(
                 mode=mode,
                 market_csv=market_csv,
@@ -343,17 +369,25 @@ def run_pipeline_batch(
                 train_end=train_end,
                 val_end=val_end,
                 enable_blackbox=False,
+                enable_whitebox=True,
                 external_csv=None,
                 hawkes_quantiles=hawkes_quantiles,
                 hawkes_online_update_enabled=hawkes_online_update_enabled,
                 exp1_debug_tables=exp1_debug_tables,
                 exp2_debug_tables=exp2_debug_tables,
-                output_subdir="whitebox_only",
+                output_subdir=f"whitebox_only/{symbol.lower()}",
             )
+            if mode_norm == "first":
+                whitebox_has_run = True
             continue
 
         for prefix, external_csv in candidates:
-            print(f"[PIPELINE][{symbol}] external model prefix={prefix} file={external_csv}")
+            run_whitebox = mode_norm == "always" or (mode_norm == "first" and not whitebox_has_run)
+
+            print(
+                f"[PIPELINE][{symbol}] external model prefix={prefix} file={external_csv} "
+                f"whitebox={'on' if run_whitebox else 'off'}"
+            )
             results[symbol][prefix] = run_pipeline_for_market(
                 mode=mode,
                 market_csv=market_csv,
@@ -362,15 +396,19 @@ def run_pipeline_batch(
                 train_end=train_end,
                 val_end=val_end,
                 enable_blackbox=True,
+                enable_whitebox=run_whitebox,
                 external_csv=external_csv,
                 hawkes_quantiles=hawkes_quantiles,
                 hawkes_online_update_enabled=hawkes_online_update_enabled,
                 exp1_debug_tables=exp1_debug_tables,
                 exp2_debug_tables=exp2_debug_tables,
-                output_subdir=prefix,
+                output_subdir=f"{prefix}/{symbol.lower()}",
             )
-    return results
 
+            if run_whitebox:
+                whitebox_has_run = True
+
+    return results
 
 def parse_cli_list(raw: str | None) -> list[str]:
     return _parse_csv_list(raw)
@@ -378,3 +416,9 @@ def parse_cli_list(raw: str | None) -> list[str]:
 
 def parse_cli_quantiles(raw: str | None) -> tuple[float, ...]:
     return _parse_float_tuple(raw)
+
+
+
+
+
+

@@ -1,0 +1,61 @@
+{
+  "split": {
+    "mode": "explicit_dates",
+    "train_end": "2025-08-31 00:00:00+00:00",
+    "val_end": "2025-11-30 00:00:00+00:00",
+    "train_rows": 2250,
+    "val_rows": 91,
+    "test_rows": 77
+  },
+  "test_rows": 76,
+  "whitebox_enabled": true,
+  "blackbox_enabled": true,
+  "hawkes_fit_policy": {
+    "online_update_enabled": false,
+    "fit_window": "train+val",
+    "fit_rows": 2341
+  },
+  "no_hawkes": {
+    "white": {
+      "CumRet": -0.33751615906663823,
+      "Sharpe": -1.880373964015731,
+      "MaxDD": -0.4060122944749255,
+      "Calmar": -2.1309471319433135,
+      "WinRate": 0.527027027027027
+    },
+    "black": {
+      "CumRet": -0.3271942474223679,
+      "Sharpe": -1.793445213362547,
+      "MaxDD": -0.42420257709318554,
+      "Calmar": -2.0147359839146133,
+      "WinRate": 0.3783783783783784
+    }
+  },
+  "hawkes": {
+    "q70": {
+      "event_threshold_quantile": 0.7,
+      "event_threshold_tau": 0.03892129908362296,
+      "white": {
+        "CumRet": -0.33751615906663823,
+        "Sharpe": -1.880373964015731,
+        "MaxDD": -0.4060122944749255,
+        "Calmar": -2.1309471319433135,
+        "WinRate": 0.527027027027027
+      },
+      "black": {
+        "CumRet": -0.3271942474223679,
+        "Sharpe": -1.793445213362547,
+        "MaxDD": -0.42420257709318554,
+        "Calmar": -2.0147359839146133,
+        "WinRate": 0.3783783783783784
+      }
+    }
+  },
+  "buy_and_hold": {
+    "CumRet": -0.18056365393671137,
+    "Sharpe": -0.6934536547043916,
+    "MaxDD": -0.4167161030919455,
+    "Calmar": -1.4892421439950203,
+    "WinRate": 0.35135135135135137
+  }
+}

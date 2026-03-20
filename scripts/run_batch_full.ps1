@@ -1,12 +1,14 @@
 ﻿param(
-  [string]$Symbols = "BTCUSDT,ETHUSDT,LTCUSDT,DOGEUSDT,XRPUSDT,BNBUSDT,BCHUSDT,ZECUSDT",
+  [string]$Symbols = "BTCUSDT,ETHUSDT,LTCUSDT,DOGEUSDT,XRPUSDT,BCHUSDT",
   [string]$Mode = "full",
   [string]$Interval = "1d",
   [string]$TrainEnd = "2025-08-31",
   [string]$ValEnd = "2025-11-30",
-  [string]$HawkesQ = "0.9",
+  [string]$HawkesQ = "0.7",
   [string]$ExternalFamily = "ft",
   [string]$ExternalRunId = "1",
+  [ValidateSet("always", "first", "off")]
+  [string]$WhiteboxMode = "always",
   [switch]$DisableBlackbox
 )
 
@@ -22,4 +24,5 @@ env\Scripts\python main.py `
   --external-family $ExternalFamily `
   --external-run-id $ExternalRunId `
   --hawkes-quantiles $HawkesQ `
+  --whitebox-mode $WhiteboxMode `
   $blackboxFlag
