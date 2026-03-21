@@ -6,9 +6,9 @@
   [string]$ValEnd = "2025-11-30",
   [string]$HawkesQ = "0.7",
   [string]$ExternalFamily = "ft",
-  [string]$ExternalRunId = "1",
+  [string]$ExternalRunId = "random_ExQuTime_qg2_qp2_td0p8_ma1_dl0p2_dt0p1",
   [ValidateSet("always", "first", "off")]
-  [string]$WhiteboxMode = "always",
+  [string]$WhiteboxMode = "off",
   [switch]$DisableBlackbox
 )
 

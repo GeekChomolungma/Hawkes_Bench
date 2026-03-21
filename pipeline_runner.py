@@ -21,7 +21,7 @@ from utils.interval_policy import apply_interval_policy
 from utils.market_meta import parse_market_from_csv_path
 
 _NEW_EXTERNAL_RE = re.compile(
-    r"^predictions_decision_aligned__target_(?P<symbol>[a-z0-9]+)__init_(?P<init_mode>[a-z0-9]+)__loss_(?P<loss_mode>[a-z0-9]+)__tag_(?P<tag>.+)\.csv$",
+    r"^predictions_decision_aligned__target_(?P<symbol>[a-z0-9]+)__init_(?P<init_mode>[a-z0-9]+)__loss_(?P<loss_mode>[a-z0-9_]+)(?:__lsig_(?P<loss_sig>.+?))?__tag_(?P<tag>.+)\.csv$",
     flags=re.IGNORECASE,
 )
 
@@ -67,7 +67,7 @@ def resolve_external_csv_candidates(
     Discover external forecast files for one (symbol, interval) pair.
 
     Expected on-disk layout:
-        {external_dir}/{family}/{interval}/{run_id}/predictions_decision_aligned__target_<symbol>__init_<init_mode>__loss_<loss_mode>__tag_<tag>.csv
+        {external_dir}/{family}/{interval}/{run_id}/predictions_decision_aligned__target_<symbol>__init_<init_mode>__loss_<loss_mode>[__lsig_<loss_signature>]__tag_<tag>.csv
 
     Where:
     - family: model family folder (e.g. "ft", "hf")
@@ -75,8 +75,9 @@ def resolve_external_csv_candidates(
     - run_id: arbitrary run folder name, usually a number/string (e.g. "1", "2", "expA")
       This function treats run_id as opaque text and does not enforce numeric parsing.
 
-    Simple example:
+    Simple examples:
         data/external_forecasts/ft/1d/1/predictions_decision_aligned__target_bchusdt__init_pretrained__loss_native__tag_batch_bchusdt_to_bchusdt.csv
+        data/external_forecasts/ft/1d/random_ExQuTime_qg2_qp2_td0p8_ma1_dl0p2_dt0p1/predictions_decision_aligned__target_bchusdt__init_random__loss_weighted_extreme_time_decay__lsig_qg2_qp2_td0p8_ma1_dl0p2_dt0p1__tag_batch_bchusdt_to_bchusdt.csv
 
     Returned value:
     - List of tuples: (output_subdir_key, csv_path)
@@ -104,7 +105,7 @@ def resolve_external_csv_candidates(
     if not run_dir.is_dir():
         return []
 
-    for p in sorted(run_dir.glob("predictions_decision_aligned__target_*__init_*__loss_*__tag_*.csv")):
+    for p in sorted(run_dir.glob("predictions_decision_aligned__target_*__init_*__loss_*__tag_*.csv")): # OK with "__loss_(?P<loss_mode>[a-z0-9_]+)(?:__lsig_(?P<loss_sig>.+?))"
         m = _NEW_EXTERNAL_RE.match(p.name)
         if not m:
             continue
@@ -113,8 +114,12 @@ def resolve_external_csv_candidates(
 
         init_mode = _sanitize_tag(m.group("init_mode").lower())
         loss_mode = _sanitize_tag(m.group("loss_mode").lower())
+        loss_sig = _sanitize_tag((m.group("loss_sig") or "").lower())
         tag = _sanitize_tag(m.group("tag").lower())
-        model_slug = f"init_{init_mode}__loss_{loss_mode}__tag_{tag}"
+        model_slug = f"init_{init_mode}__loss_{loss_mode}"
+        if loss_sig:
+            model_slug += f"__lsig_{loss_sig}"
+        model_slug += f"__tag_{tag}"
 
         # Mirror explicit external folder hierarchy under reports.
         base_subdir = f"{fam}/{interval}/{rid}"

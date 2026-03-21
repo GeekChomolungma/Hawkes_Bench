@@ -2,3 +2,15 @@
 market_info/
 __pycache__
 env/
+
+# Large external forecast artifacts
+data/external_forecasts/
+
+# Keep only demo outputs in reports
+reports/figures/*
+!reports/figures/demo/
+!reports/figures/demo/**
+
+reports/tables/*
+!reports/tables/demo/
+!reports/tables/demo/**
