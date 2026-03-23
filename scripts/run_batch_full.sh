@@ -10,6 +10,8 @@ set -euo pipefail
 #   TRAIN_END=2025-08-31
 #   VAL_END=2025-11-30
 #   HAWKES_Q=0.85,0.90,0.95
+#   EXECUTION_MODE=stateful_all_in   # stateful_all_in | target_continuous
+#   ENTRY_THRESHOLD=0.0
 #   EXTERNAL_FAMILY=ft
 #   EXTERNAL_RUN_ID=1
 #   ENABLE_BLACKBOX=1
@@ -22,6 +24,8 @@ INTERVAL="${INTERVAL:-1d}"
 TRAIN_END="${TRAIN_END:-2025-08-31}"
 VAL_END="${VAL_END:-2025-11-30}"
 HAWKES_Q="${HAWKES_Q:-0.9}"
+EXECUTION_MODE="${EXECUTION_MODE:-stateful_all_in}"
+ENTRY_THRESHOLD="${ENTRY_THRESHOLD:-0.0}"
 EXTERNAL_FAMILY="${EXTERNAL_FAMILY:-ft}"
 EXTERNAL_RUN_ID="${EXTERNAL_RUN_ID:-pretrained_1}"
 ENABLE_BLACKBOX="${ENABLE_BLACKBOX:-1}"
@@ -42,5 +46,7 @@ ${PYTHON_BIN} main.py \
   --external-family "${EXTERNAL_FAMILY}" \
   --external-run-id "${EXTERNAL_RUN_ID}" \
   --hawkes-quantiles "${HAWKES_Q}" \
+  --execution-mode "${EXECUTION_MODE}" \
+  --entry-threshold "${ENTRY_THRESHOLD}" \
   --whitebox-mode "${WHITEBOX_MODE}" \
   ${BLACKBOX_FLAG}

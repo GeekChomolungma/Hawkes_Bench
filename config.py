@@ -12,7 +12,7 @@ class SplitConfig:
 
 @dataclass
 class DataConfig:
-    csv_path: str = "market_info/BTCUSDT_1d_Binance.csv"
+    csv_path: str = "market_info/BTCUSDT_1d_Binance_cleaned.csv"
     symbol: str = "BTCUSDT"
     interval: str = "1d"
     split: SplitConfig = field(default_factory=SplitConfig)

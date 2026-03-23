@@ -220,6 +220,7 @@ def plot_backtest_layer(
         decision_ts = pd.to_datetime(df["decision_ts"], utc=True, errors="coerce")
         marker_ts = pd.DatetimeIndex(decision_ts.dropna())
         dpos = pd.Series(df["dpos"].to_numpy(), index=marker_ts).sort_index()
+        pos_marker = pd.Series(df["pos"].to_numpy(), index=marker_ts).sort_index()
     else:
         # Fallback to settlement-time inference.
         marker_ts = settle_idx
@@ -227,19 +228,54 @@ def plot_backtest_layer(
         if len(dpos) > 0:
             dpos.iloc[0] = df["pos"].iloc[0]
         dpos = dpos.fillna(0.0)
+        pos_marker = df["pos"].reindex(marker_ts).fillna(0.0).astype(float)
 
-    buy_idx = dpos.index[dpos > 0]
-    sell_idx = dpos.index[dpos < 0]
+    # Marker policy:
+    # Use regime transitions to distinguish open/close actions.
+    # - Open Long:   <=0 -> >0
+    # - Open Short:  >=0 -> <0
+    # - Close Short: <0  -> >=0
+    # - Close Long:  >0  -> <=0
+    pos_values = pos_marker.fillna(0.0).astype(float)
+    prev = pos_values.shift(1).fillna(0.0)
+    open_long_idx = pos_values.index[(pos_values > 0) & (prev <= 0)]
+    open_short_idx = pos_values.index[(pos_values < 0) & (prev >= 0)]
+    close_short_idx = pos_values.index[(pos_values >= 0) & (prev < 0)]
+    close_long_idx = pos_values.index[(pos_values <= 0) & (prev > 0)]
 
     fig = plt.figure(figsize=(15, 9))
     ax1 = plt.subplot(2, 1, 1)
     ax2 = plt.subplot(2, 1, 2, sharex=ax1)
 
     ax1.plot(close_full.index, close_full.values, label="Close", color="tab:blue", linewidth=1.4)
-    if len(buy_idx) > 0:
-        ax1.scatter(buy_idx, close_full.reindex(buy_idx).values, marker="^", s=50, label="Buy", color="tab:green")
-    if len(sell_idx) > 0:
-        ax1.scatter(sell_idx, close_full.reindex(sell_idx).values, marker="v", s=50, label="Sell", color="tab:red")
+    if len(open_long_idx) > 0:
+        ax1.scatter(open_long_idx, close_full.reindex(open_long_idx).values, marker="^", s=50, label="Open Long", color="tab:green")
+    if len(open_short_idx) > 0:
+        ax1.scatter(open_short_idx, close_full.reindex(open_short_idx).values, marker="v", s=50, label="Open Short", color="tab:red")
+    if len(close_short_idx) > 0:
+        y_cover = close_full.reindex(close_short_idx).astype(float) * 1.006
+        ax1.scatter(
+            close_short_idx,
+            y_cover.values,
+            marker="o",
+            s=34,
+            facecolors="none",
+            edgecolors="tab:green",
+            linewidths=1.2,
+            label="Close Short",
+        )
+    if len(close_long_idx) > 0:
+        y_flat_long = close_full.reindex(close_long_idx).astype(float) * 0.994
+        ax1.scatter(
+            close_long_idx,
+            y_flat_long.values,
+            marker="o",
+            s=34,
+            facecolors="none",
+            edgecolors="tab:red",
+            linewidths=1.2,
+            label="Close Long",
+        )
 
     ax1.set_title(title)
     ax1.grid(True)

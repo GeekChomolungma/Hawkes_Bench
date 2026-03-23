@@ -42,6 +42,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--train-end", default="2022-12-31")
     p.add_argument("--val-end", default="2024-12-31")
     p.add_argument("--hawkes-quantiles", default="0.9", help="comma-separated, e.g. 0.85,0.9,0.95")
+    p.add_argument("--execution-mode", choices=["stateful_all_in", "target_continuous"], default="stateful_all_in")
+    p.add_argument("--entry-threshold", type=float, default=0.0)
     p.add_argument("--hawkes-online-update", action="store_true", default=False)
     p.add_argument("--exp1-debug-tables", action="store_true", default=False)
     p.add_argument("--exp2-debug-tables", action="store_true", default=False)
@@ -69,6 +71,8 @@ def _resolve_whitebox_mode(args: argparse.Namespace) -> str:
 
 def main() -> None:
     args = build_parser().parse_args()
+    if args.entry_threshold < 0:
+        raise ValueError("--entry-threshold must be >= 0")
 
     enable_blackbox = bool(args.enable_blackbox and not args.disable_blackbox)
     hawkes_quantiles = parse_cli_quantiles(args.hawkes_quantiles)
@@ -89,6 +93,8 @@ def main() -> None:
             external_family=args.external_family,
             external_run_id=args.external_run_id,
             hawkes_quantiles=hawkes_quantiles,
+            execution_mode=args.execution_mode,
+            entry_threshold=args.entry_threshold,
             hawkes_online_update_enabled=args.hawkes_online_update,
             exp1_debug_tables=args.exp1_debug_tables,
             exp2_debug_tables=args.exp2_debug_tables,
@@ -131,6 +137,8 @@ def main() -> None:
                 enable_whitebox=single_enable_whitebox,
                 external_csv=external_csv,
                 hawkes_quantiles=hawkes_quantiles,
+                execution_mode=args.execution_mode,
+                entry_threshold=args.entry_threshold,
                 hawkes_online_update_enabled=args.hawkes_online_update,
                 exp1_debug_tables=args.exp1_debug_tables,
                 exp2_debug_tables=args.exp2_debug_tables,

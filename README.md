@@ -244,6 +244,7 @@ The pipeline auto-adapts key runtime parameters by interval (`1d`, `4h`, `1h`, `
 
 The interval is parsed from the market filename pattern:
 
+- `{SYMBOL}_{INTERVAL}_Binance.csv` (legacy)
 - `{SYMBOL}_{INTERVAL}_Binance_cleaned.csv`
 
 ## Output Artifacts
@@ -349,10 +350,12 @@ The buy-and-hold line is a normalized price benchmark:
 
 Output filenames and figure titles are auto-tagged by parsing the market file name with:
 
+- `{SYMBOL}_{INTERVAL}_Binance.csv` (legacy)
 - `{SYMBOL}_{INTERVAL}_Binance_cleaned.csv`
 
 Example:
 
+- `BTCUSDT_1d_Binance.csv` -> `SYMBOL=BTCUSDT`, `INTERVAL=1d`
 - `BTCUSDT_1d_Binance_cleaned.csv` -> `SYMBOL=BTCUSDT`, `INTERVAL=1d`
 
 ## Notes

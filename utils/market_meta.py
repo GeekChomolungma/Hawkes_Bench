@@ -5,7 +5,7 @@ from pathlib import Path
 
 
 _BINANCE_NAME_RE = re.compile(
-    r"(?P<symbol>[A-Za-z0-9]+)_(?P<interval>[0-9]+[A-Za-z]+)_Binance\.csv$",
+    r"(?P<symbol>[A-Za-z0-9]+)_(?P<interval>[0-9]+[A-Za-z]+)_Binance(?:_cleaned)?\.csv$",
     flags=re.IGNORECASE,
 )
 
@@ -14,6 +14,7 @@ def parse_market_from_csv_path(csv_path: str, fallback_symbol: str, fallback_int
     """
     Parse market metadata from filename pattern:
       {SYMBOL}_{INTERVAL}_Binance.csv
+      {SYMBOL}_{INTERVAL}_Binance_cleaned.csv
     """
     name = Path(csv_path).name
     m = _BINANCE_NAME_RE.match(name)
@@ -27,4 +28,3 @@ def parse_market_from_csv_path(csv_path: str, fallback_symbol: str, fallback_int
     key = f"{symbol}_{interval}"
     title_label = f"{symbol} {interval}"
     return {"symbol": symbol, "interval": interval, "key": key, "title_label": title_label}
-

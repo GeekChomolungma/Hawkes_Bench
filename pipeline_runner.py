@@ -150,6 +150,8 @@ def build_configs_for_market(
     enable_blackbox: bool,
     external_csv: str | None,
     hawkes_quantiles: tuple[float, ...],
+    execution_mode: str,
+    entry_threshold: float,
     hawkes_online_update_enabled: bool,
     exp1_debug_tables: bool,
     exp2_debug_tables: bool,
@@ -170,7 +172,11 @@ def build_configs_for_market(
         alpha_risk=1.0,
         time_unit="auto",
     )
-    sig_cfg = SignalConfig(position_cap=1.0)
+    sig_cfg = SignalConfig(
+        position_cap=1.0,
+        execution_mode=execution_mode,
+        entry_threshold=entry_threshold,
+    )
     bt_cfg = BacktestConfig(fee_bps=2.0, slippage_bps=1.0, bars_per_year=252)
     table_dir = Path("reports/tables")
     figure_dir = Path("reports/figures")
@@ -222,6 +228,8 @@ def run_pipeline_for_market(
     enable_whitebox: bool,
     external_csv: str | None,
     hawkes_quantiles: tuple[float, ...],
+    execution_mode: str,
+    entry_threshold: float,
     hawkes_online_update_enabled: bool,
     exp1_debug_tables: bool,
     exp2_debug_tables: bool,
@@ -236,6 +244,8 @@ def run_pipeline_for_market(
         enable_blackbox=enable_blackbox,
         external_csv=external_csv,
         hawkes_quantiles=hawkes_quantiles,
+        execution_mode=execution_mode,
+        entry_threshold=entry_threshold,
         hawkes_online_update_enabled=hawkes_online_update_enabled,
         exp1_debug_tables=exp1_debug_tables,
         exp2_debug_tables=exp2_debug_tables,
@@ -264,6 +274,11 @@ def run_pipeline_for_market(
             "blackbox_enabled": ext_cfg.enabled,
             "output_subdir": output_subdir,
             "split": asdict(data_cfg.split),
+            "signal": {
+                "execution_mode": sig_cfg.execution_mode,
+                "entry_threshold": sig_cfg.entry_threshold,
+                "position_cap": sig_cfg.position_cap,
+            },
         }
     }
 
@@ -306,6 +321,8 @@ def run_pipeline_batch(
     external_family: str,
     external_run_id: str,
     hawkes_quantiles: tuple[float, ...],
+    execution_mode: str,
+    entry_threshold: float,
     hawkes_online_update_enabled: bool,
     exp1_debug_tables: bool,
     exp2_debug_tables: bool,
@@ -353,6 +370,8 @@ def run_pipeline_batch(
                 enable_whitebox=True,
                 external_csv=None,
                 hawkes_quantiles=hawkes_quantiles,
+                execution_mode=execution_mode,
+                entry_threshold=entry_threshold,
                 hawkes_online_update_enabled=hawkes_online_update_enabled,
                 exp1_debug_tables=exp1_debug_tables,
                 exp2_debug_tables=exp2_debug_tables,
@@ -377,6 +396,8 @@ def run_pipeline_batch(
                 enable_whitebox=True,
                 external_csv=None,
                 hawkes_quantiles=hawkes_quantiles,
+                execution_mode=execution_mode,
+                entry_threshold=entry_threshold,
                 hawkes_online_update_enabled=hawkes_online_update_enabled,
                 exp1_debug_tables=exp1_debug_tables,
                 exp2_debug_tables=exp2_debug_tables,
@@ -404,6 +425,8 @@ def run_pipeline_batch(
                 enable_whitebox=run_whitebox,
                 external_csv=external_csv,
                 hawkes_quantiles=hawkes_quantiles,
+                execution_mode=execution_mode,
+                entry_threshold=entry_threshold,
                 hawkes_online_update_enabled=hawkes_online_update_enabled,
                 exp1_debug_tables=exp1_debug_tables,
                 exp2_debug_tables=exp2_debug_tables,
@@ -421,7 +444,6 @@ def parse_cli_list(raw: str | None) -> list[str]:
 
 def parse_cli_quantiles(raw: str | None) -> tuple[float, ...]:
     return _parse_float_tuple(raw)
-
 
 
 
