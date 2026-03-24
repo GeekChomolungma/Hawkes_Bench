@@ -9,6 +9,8 @@ set -euo pipefail
 #   INTERVAL=1d
 #   TRAIN_END=2025-08-31
 #   VAL_END=2025-11-30
+#   TEST_START=        # optional, inclusive lower bound for test window
+#   TEST_END=          # optional, inclusive upper bound for test window
 #   HAWKES_Q=0.85,0.90,0.95
 #   EXECUTION_MODE=stateful_all_in   # stateful_all_in | target_continuous
 #   ENTRY_THRESHOLD=0.0
@@ -23,6 +25,8 @@ MODE="${MODE:-full}"
 INTERVAL="${INTERVAL:-1d}"
 TRAIN_END="${TRAIN_END:-2025-08-31}"
 VAL_END="${VAL_END:-2025-11-30}"
+TEST_START="${TEST_START:-}"
+TEST_END="${TEST_END:-}"
 HAWKES_Q="${HAWKES_Q:-0.9}"
 EXECUTION_MODE="${EXECUTION_MODE:-stateful_all_in}"
 ENTRY_THRESHOLD="${ENTRY_THRESHOLD:-0.0}"
@@ -43,6 +47,8 @@ ${PYTHON_BIN} main.py \
   --interval "${INTERVAL}" \
   --train-end "${TRAIN_END}" \
   --val-end "${VAL_END}" \
+  --test-start "${TEST_START}" \
+  --test-end "${TEST_END}" \
   --external-family "${EXTERNAL_FAMILY}" \
   --external-run-id "${EXTERNAL_RUN_ID}" \
   --hawkes-quantiles "${HAWKES_Q}" \

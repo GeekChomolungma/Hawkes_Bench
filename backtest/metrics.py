@@ -136,6 +136,18 @@ def compute_forecast_metrics(
         upper = mu + z80 * sig
         out["picp_80"] = _compute_picp(y_true=y, lower=lower, upper=upper)
 
+    # Additional PICP 20% ~ 80% if quantiles are available.
+    if quantile_preds and 0.20 in quantile_preds and 0.80 in quantile_preds:
+        out["picp_60"] = _compute_picp(y_true=y, lower=quantile_preds[0.20], upper=quantile_preds[0.80])
+    elif sigma_pred is not None and mu_pred is not None:
+        # 60% interval for Gaussian: z ~= 0.84162
+        z60 = 0.8416212335729143
+        mu = mu_pred.reindex(y.index).astype(float)
+        sig = sigma_pred.reindex(y.index).astype(float).clip(lower=1e-12)
+        lower = mu - z60 * sig
+        upper = mu + z60 * sig
+        out["picp_60"] = _compute_picp(y_true=y, lower=lower, upper=upper)
+
     return out
 
 

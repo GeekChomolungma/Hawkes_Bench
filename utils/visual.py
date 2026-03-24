@@ -84,20 +84,30 @@ def plot_forecast_layer(
         band_name = band_label or "Pred Band"
 
     valid = target_x.notna() & df["price_pred_median"].notna()
+    plot_idx = df.index[valid]
+    target_x_valid = pd.DatetimeIndex(target_x.reindex(plot_idx))
+    close_target = close.reindex(target_x_valid).astype(float)
+    keep = close_target.notna().to_numpy()
+    plot_idx = plot_idx[keep]
+    target_x_valid = target_x_valid[keep]
+    close_target = close_target[keep]
+    pred_target = df.loc[plot_idx, "price_pred_median"].astype(float)
+
     plt.figure(figsize=(14, 6))
-    plt.plot(close.index, close.values, label="Close (GT)", alpha=0.8, color=COLOR_GT)
+    # Plot GT close on the same target timeline (t+1) as predictions to avoid one-step visual offset.
+    plt.plot(target_x_valid, close_target.values, label="Close (GT, t+1)", alpha=0.8, color=COLOR_GT)
     plt.plot(
-        target_x[valid],
-        df.loc[valid, "price_pred_median"].values,
+        target_x_valid,
+        pred_target.values,
         label="Pred Price (median, t+1)",
         linewidth=2,
         color=COLOR_PRED,
     )
 
     if lo_price is not None and hi_price is not None:
-        lo = lo_price[valid].astype(float)
-        hi = hi_price[valid].astype(float)
-        plt.fill_between(target_x[valid], lo, hi, alpha=0.25, label=band_name, color=COLOR_BAND)
+        lo = lo_price.reindex(plot_idx).astype(float)
+        hi = hi_price.reindex(plot_idx).astype(float)
+        plt.fill_between(target_x_valid, lo, hi, alpha=0.25, label=band_name, color=COLOR_BAND)
 
     plt.title(title)
     plt.grid(True)

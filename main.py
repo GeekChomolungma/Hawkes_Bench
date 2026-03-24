@@ -41,6 +41,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     p.add_argument("--train-end", default="2022-12-31")
     p.add_argument("--val-end", default="2024-12-31")
+    p.add_argument("--test-start", default="")
+    p.add_argument("--test-end", default="")
     p.add_argument("--hawkes-quantiles", default="0.9", help="comma-separated, e.g. 0.85,0.9,0.95")
     p.add_argument("--execution-mode", choices=["stateful_all_in", "target_continuous"], default="stateful_all_in")
     p.add_argument("--entry-threshold", type=float, default=0.0)
@@ -87,6 +89,8 @@ def main() -> None:
             market_dir=args.market_dir,
             train_end=args.train_end,
             val_end=args.val_end,
+            test_start=args.test_start,
+            test_end=args.test_end,
             enable_blackbox=enable_blackbox,
             whitebox_mode=whitebox_mode,
             external_dir=args.external_dir,
@@ -133,6 +137,8 @@ def main() -> None:
                 interval=args.interval,
                 train_end=args.train_end,
                 val_end=args.val_end,
+                test_start=args.test_start,
+                test_end=args.test_end,
                 enable_blackbox=enable_blackbox,
                 enable_whitebox=single_enable_whitebox,
                 external_csv=external_csv,

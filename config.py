@@ -8,6 +8,12 @@ class SplitConfig:
     # Inclusive boundary: decision ts <= val_end belongs to val.
     # test is (val_end, +inf). If omitted, test is (train_end, +inf).
     val_end: str | None = None
+    # Optional inclusive lower bound for test window.
+    # If omitted, keep the default split-derived start.
+    test_start: str | None = None
+    # Optional inclusive upper bound for test window.
+    # If omitted, test window extends to the end of data.
+    test_end: str | None = None
 
 
 @dataclass

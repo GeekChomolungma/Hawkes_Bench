@@ -34,6 +34,10 @@ def _build_exp2_split_indices(
     if split is not None and split.train_end:
         train_end = _to_utc_ts(split.train_end)
         val_end = _to_utc_ts(split.val_end) if split.val_end else None
+        test_start = _to_utc_ts(split.test_start) if getattr(split, "test_start", None) else None
+        test_end = _to_utc_ts(split.test_end) if getattr(split, "test_end", None) else None
+        if test_start is not None and test_end is not None and test_start > test_end:
+            raise ValueError(f"Exp2 invalid test window: test_start ({test_start}) > test_end ({test_end}).")
 
         idx_train = idx_all[idx_all <= train_end]
         if val_end is not None:
@@ -43,10 +47,18 @@ def _build_exp2_split_indices(
             idx_val = idx_all[:0]
             idx_test = idx_all[idx_all > train_end]
 
+        # Optional explicit test-window override (inclusive bounds) on top of split-derived test set.
+        if test_start is not None:
+            idx_test = idx_test[idx_test >= test_start]
+        if test_end is not None:
+            idx_test = idx_test[idx_test <= test_end]
+
         info = {
             "mode": "explicit_dates",
             "train_end": str(train_end),
             "val_end": str(val_end) if val_end is not None else None,
+            "test_start": str(test_start) if test_start is not None else (str(val_end) if val_end is not None else str(train_end)),
+            "test_end": str(test_end) if test_end is not None else None,
             "train_rows": int(len(idx_train)),
             "val_rows": int(len(idx_val)),
             "test_rows": int(len(idx_test)),
@@ -62,6 +74,8 @@ def _build_exp2_split_indices(
         "mode": "ratio_70_10_20",
         "train_end": str(df_train.index[-1]),
         "val_end": str(df_val.index[-1]),
+        "test_start": str(df_val.index[-1]),
+        "test_end": None,
         "train_rows": int(len(idx_train)),
         "val_rows": int(len(idx_val)),
         "test_rows": int(len(idx_test)),

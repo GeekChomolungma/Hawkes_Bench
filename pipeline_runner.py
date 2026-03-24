@@ -147,6 +147,8 @@ def build_configs_for_market(
     interval: str,
     train_end: str,
     val_end: str,
+    test_start: str,
+    test_end: str,
     enable_blackbox: bool,
     external_csv: str | None,
     hawkes_quantiles: tuple[float, ...],
@@ -161,7 +163,12 @@ def build_configs_for_market(
         csv_path=market_csv,
         symbol=symbol,
         interval=interval,
-        split=SplitConfig(train_end=train_end, val_end=val_end),
+        split=SplitConfig(
+            train_end=train_end,
+            val_end=val_end,
+            test_start=(test_start.strip() or None) if isinstance(test_start, str) else None,
+            test_end=(test_end.strip() or None) if isinstance(test_end, str) else None,
+        ),
     )
     wb_cfg = WhiteBoxConfig(arima_order=(1, 0, 1), garch_pq=(1, 1), rolling_window=30, z_score=1.96)
     hawkes_cfg = HawkesConfig(
@@ -224,6 +231,8 @@ def run_pipeline_for_market(
     interval: str,
     train_end: str,
     val_end: str,
+    test_start: str,
+    test_end: str,
     enable_blackbox: bool,
     enable_whitebox: bool,
     external_csv: str | None,
@@ -241,6 +250,8 @@ def run_pipeline_for_market(
         interval=interval,
         train_end=train_end,
         val_end=val_end,
+        test_start=test_start,
+        test_end=test_end,
         enable_blackbox=enable_blackbox,
         external_csv=external_csv,
         hawkes_quantiles=hawkes_quantiles,
@@ -315,6 +326,8 @@ def run_pipeline_batch(
     market_dir: str,
     train_end: str,
     val_end: str,
+    test_start: str,
+    test_end: str,
     enable_blackbox: bool,
     whitebox_mode: str,
     external_dir: str,
@@ -366,6 +379,8 @@ def run_pipeline_batch(
                 interval=interval,
                 train_end=train_end,
                 val_end=val_end,
+                test_start=test_start,
+                test_end=test_end,
                 enable_blackbox=False,
                 enable_whitebox=True,
                 external_csv=None,
@@ -392,6 +407,8 @@ def run_pipeline_batch(
                 interval=interval,
                 train_end=train_end,
                 val_end=val_end,
+                test_start=test_start,
+                test_end=test_end,
                 enable_blackbox=False,
                 enable_whitebox=True,
                 external_csv=None,
@@ -421,6 +438,8 @@ def run_pipeline_batch(
                 interval=interval,
                 train_end=train_end,
                 val_end=val_end,
+                test_start=test_start,
+                test_end=test_end,
                 enable_blackbox=True,
                 enable_whitebox=run_whitebox,
                 external_csv=external_csv,
@@ -444,7 +463,6 @@ def parse_cli_list(raw: str | None) -> list[str]:
 
 def parse_cli_quantiles(raw: str | None) -> tuple[float, ...]:
     return _parse_float_tuple(raw)
-
 
 
 
