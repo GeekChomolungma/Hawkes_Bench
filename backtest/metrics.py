@@ -102,13 +102,18 @@ def compute_forecast_metrics(
 ) -> dict:
     y = y_true.astype(float)
     out: dict[str, float] = {}
+    point_pred: pd.Series | None = None
 
     if mu_pred is not None:
         yp = mu_pred.reindex(y.index).astype(float)
+        point_pred = yp
         err = y - yp
         out["mse"] = float(np.nanmean(err**2))
         out["mae"] = float(np.nanmean(np.abs(err)))
         out["rmse"] = float(np.sqrt(out["mse"]))
+    elif quantile_preds and 0.50 in quantile_preds:
+        # Fallback point prediction for direction/ranking metrics when mu_pred is unavailable.
+        point_pred = quantile_preds[0.50].reindex(y.index).astype(float)
 
     q_losses = []
     if quantile_preds:
@@ -147,6 +152,20 @@ def compute_forecast_metrics(
         lower = mu - z60 * sig
         upper = mu + z60 * sig
         out["picp_60"] = _compute_picp(y_true=y, lower=lower, upper=upper)
+
+    # Direction/ranking metrics:
+    # - sign_accuracy: proportion of timestamps where sign(pred) == sign(y_true)
+    # - ic_pearson: linear correlation between point forecast and y_true
+    # - rank_ic_spearman: rank correlation (Information Coefficient)
+    if point_pred is not None:
+        yp = point_pred.reindex(y.index).astype(float)
+        mask = y.notna() & yp.notna()
+        yv = y[mask]
+        pv = yp[mask]
+        if len(yv) > 0:
+            out["sign_accuracy"] = float((np.sign(pv.to_numpy()) == np.sign(yv.to_numpy())).mean())
+            out["ic_pearson"] = float(yv.corr(pv, method="pearson"))
+            out["rank_ic_spearman"] = float(yv.corr(pv, method="spearman"))
 
     return out
 
