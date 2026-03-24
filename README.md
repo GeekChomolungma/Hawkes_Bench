@@ -33,8 +33,10 @@ This codebase is built to compare white-box and black-box forecasts under one un
 - `experiments/exp2_hawkes_ablation.py`: Experiment 2 (trading layer)
 - `utils/visual.py`: forecast and backtest plots
 - `utils/persist.py`: save metrics/tables
+- `utils/load_meta.py`: load and preview `.npy` figure metadata payloads
 - `schemas/forecast_protocol.md`: external black-box data contract
 - `reports/tables`, `reports/figures`: outputs
+- [EXP_RESULTS_META.md](EXP_RESULTS_META.md): `.npy` metadata protocol for figure reproduction
 
 ## Core Experimental Workflow
 
@@ -268,6 +270,13 @@ The interval is parsed from the market filename pattern:
 - Includes forecast figures and backtest figures:
   - top panel: price + buy/sell markers
   - bottom panel: strategy equity + buy-and-hold reference
+
+### Figure Metadata (.npy)
+
+- White-box only: `reports/exp_results_meta/whitebox_only/<symbol>/...`
+- Black-box enabled: `reports/exp_results_meta/<family>/<interval>/<run_id>/<symbol>/...`
+- Protocol and field definitions:
+  - [EXP_RESULTS_META.md](EXP_RESULTS_META.md)
 
 ## Results Showcase (How to Read the Plots)
 

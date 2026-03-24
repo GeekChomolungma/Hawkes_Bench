@@ -100,6 +100,7 @@ def run_exp1_forecast_eval(
     """
     Path(out_cfg.table_dir).mkdir(parents=True, exist_ok=True)
     Path(out_cfg.figure_dir).mkdir(parents=True, exist_ok=True)
+    Path(out_cfg.meta_dir).mkdir(parents=True, exist_ok=True)
     debug_tables = bool(getattr(out_cfg, "exp1_save_debug_tables", False))
 
     df = load_kline_csv(data_cfg.csv_path)
@@ -182,12 +183,14 @@ def run_exp1_forecast_eval(
             forecast_df=white_test,
             title=f"{mt} | White-box Forecast (Test)",
             out_path=f"{out_cfg.figure_dir}/exp1_whitebox_forecast_{mk}.png",
+            meta_out_path=f"{out_cfg.meta_dir}/exp1_whitebox_forecast_{mk}.npy",
         )
         plot_return_target_layer(
             returns=returns,
             forecast_df=white_test,
             title=f"{mt} | White-box Return Target (Test)",
             out_path=f"{out_cfg.figure_dir}/exp1_whitebox_return_target_test_{mk}.png",
+            meta_out_path=f"{out_cfg.meta_dir}/exp1_whitebox_return_target_test_{mk}.npy",
         )
 
         # Naive baseline for leakage sanity check: predict r_{t+1} with r_t
@@ -228,6 +231,7 @@ def run_exp1_forecast_eval(
             forecast_df=black_test,
             title=f"{mt} | Black-box Forecast (Test)",
             out_path=f"{out_cfg.figure_dir}/exp1_blackbox_forecast_{mk}.png",
+            meta_out_path=f"{out_cfg.meta_dir}/exp1_blackbox_forecast_{mk}.npy",
             band_low_col="q10",
             band_high_col="q90",
             band_label="Pred Band (q10-q90, t+1)",
@@ -237,6 +241,7 @@ def run_exp1_forecast_eval(
             forecast_df=black_test,
             title=f"{mt} | Black-box Return Target (Test)",
             out_path=f"{out_cfg.figure_dir}/exp1_blackbox_return_target_test_{mk}.png",
+            meta_out_path=f"{out_cfg.meta_dir}/exp1_blackbox_return_target_test_{mk}.npy",
             band_low_col="q10",
             band_high_col="q90",
             band_label="Pred Band (q10-q90)",

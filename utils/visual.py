@@ -4,6 +4,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+from utils.persist import save_npy_payload
+
 COLOR_GT = "tab:orange"
 COLOR_PRED = "tab:blue"
 COLOR_BAND = "lightblue"
@@ -28,6 +30,7 @@ def plot_forecast_layer(
     forecast_df: pd.DataFrame,
     title: str = "Close vs Forecast",
     out_path: str | None = None,
+    meta_out_path: str | None = None,
     band_low_col: str | None = None,
     band_high_col: str | None = None,
     band_label: str | None = None,
@@ -115,6 +118,18 @@ def plot_forecast_layer(
     plt.tight_layout()
     if out_path:
         plt.savefig(out_path, dpi=200)
+    if meta_out_path:
+        payload = {
+            "kind": "forecast_layer",
+            "title": title,
+            "decision_ts_ns": plot_idx,
+            "target_ts_ns": target_x_valid,
+            "close_gt_t1": close_target.to_numpy(dtype=float),
+            "pred_price_t1": pred_target.to_numpy(dtype=float),
+            "band_lo_t1": lo.to_numpy(dtype=float) if lo_price is not None and hi_price is not None else np.asarray([], dtype=float),
+            "band_hi_t1": hi.to_numpy(dtype=float) if lo_price is not None and hi_price is not None else np.asarray([], dtype=float),
+        }
+        save_npy_payload(payload, meta_out_path)
     # plt.show()  # disabled to avoid blocking in batch runs
     plt.close()
 
@@ -124,6 +139,7 @@ def plot_return_target_layer(
     forecast_df: pd.DataFrame,
     title: str = "Return Forecast vs Next Return (GT)",
     out_path: str | None = None,
+    meta_out_path: str | None = None,
     z_score: float = 1.96,
     band_low_col: str | None = None,
     band_high_col: str | None = None,
@@ -206,6 +222,19 @@ def plot_return_target_layer(
     plt.tight_layout()
     if out_path:
         plt.savefig(out_path, dpi=200)
+    if meta_out_path:
+        payload = {
+            "kind": "return_target_layer",
+            "title": title,
+            "target_ts_ns": pd.DatetimeIndex(target_x),
+            "pred_next_return": pred.to_numpy(dtype=float),
+            "real_next_return": real_next.to_numpy(dtype=float),
+            "band_lo": band_lo.to_numpy(dtype=float) if band_lo is not None and band_hi is not None else np.asarray([], dtype=float),
+            "band_hi": band_hi.to_numpy(dtype=float) if band_lo is not None and band_hi is not None else np.asarray([], dtype=float),
+            "scatter_pred": pred.to_numpy(dtype=float),
+            "scatter_real": real_next.to_numpy(dtype=float),
+        }
+        save_npy_payload(payload, meta_out_path)
     # plt.show()  # disabled to avoid blocking in batch runs
     plt.close()
 
@@ -215,6 +244,7 @@ def plot_backtest_layer(
     bt: pd.DataFrame,
     title: str = "Backtest (Price + Buy/Sell + Equity)",
     out_path: str | None = None,
+    meta_out_path: str | None = None,
 ) -> None:
     """
     Trading-view-like buy/sell markers based on position changes.
@@ -320,6 +350,27 @@ def plot_backtest_layer(
     plt.tight_layout()
     if out_path:
         plt.savefig(out_path, dpi=200)
+    if meta_out_path:
+        payload = {
+            "kind": "backtest_layer",
+            "title": title,
+            "close_ts_ns": pd.DatetimeIndex(close_full.index),
+            "close": close_full.to_numpy(dtype=float),
+            "settle_ts_ns": pd.DatetimeIndex(settle_idx),
+            "decision_ts_ns": pd.to_datetime(df["decision_ts"], utc=True, errors="coerce") if "decision_ts" in df.columns else pd.DatetimeIndex(settle_idx),
+            "pos": df["pos"].astype(float).to_numpy() if "pos" in df.columns else np.asarray([], dtype=float),
+            "dpos": df["dpos"].astype(float).to_numpy() if "dpos" in df.columns else np.asarray([], dtype=float),
+            "pnl": df["pnl"].astype(float).to_numpy() if "pnl" in df.columns else np.asarray([], dtype=float),
+            "equity_settle": df["equity"].astype(float).to_numpy() if "equity" in df.columns else np.asarray([], dtype=float),
+            "equity_ts_ns": pd.DatetimeIndex(eq_idx),
+            "equity_line": np.asarray(eq_val.values, dtype=float),
+            "buy_hold_line": np.asarray(buy_hold.values, dtype=float),
+            "open_long_ts_ns": pd.DatetimeIndex(open_long_idx),
+            "open_short_ts_ns": pd.DatetimeIndex(open_short_idx),
+            "close_short_ts_ns": pd.DatetimeIndex(close_short_idx),
+            "close_long_ts_ns": pd.DatetimeIndex(close_long_idx),
+        }
+        save_npy_payload(payload, meta_out_path)
     # plt.show()  # disabled to avoid blocking in batch runs
     plt.close()
 

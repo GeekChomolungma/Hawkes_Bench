@@ -148,6 +148,7 @@ def run_exp2_hawkes_ablation(
     """
     Path(out_cfg.table_dir).mkdir(parents=True, exist_ok=True)
     Path(out_cfg.figure_dir).mkdir(parents=True, exist_ok=True)
+    Path(out_cfg.meta_dir).mkdir(parents=True, exist_ok=True)
     debug_tables = bool(getattr(out_cfg, "exp2_save_debug_tables", False))
 
     df = load_kline_csv(data_cfg.csv_path)
@@ -254,6 +255,7 @@ def run_exp2_hawkes_ablation(
             bt=bt,
             title=f"{mt} | {branch_tag} | {case_tag} | Test",
             out_path=fig_path,
+            meta_out_path=f"{out_cfg.meta_dir}/exp2_{branch_tag}_{case_tag}_{mk}.npy",
         )
         return m
 
@@ -336,6 +338,7 @@ def run_exp2_hawkes_ablation(
         bt=bt_bh,
         title=f"{mt} | Buy & Hold | Test",
         out_path=f"{out_cfg.figure_dir}/exp2_buy_and_hold_{mk}.png",
+        meta_out_path=f"{out_cfg.meta_dir}/exp2_buy_and_hold_{mk}.npy",
     )
     out["buy_and_hold"] = bh_metrics
 

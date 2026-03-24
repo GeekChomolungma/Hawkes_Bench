@@ -14,3 +14,5 @@ reports/figures/*
 reports/tables/*
 !reports/tables/demo/
 !reports/tables/demo/**
+
+reports/exp_results_meta/*

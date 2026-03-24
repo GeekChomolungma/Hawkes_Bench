@@ -71,6 +71,7 @@ class ExternalForecastConfig:
 class OutputConfig:
     table_dir: str = "reports/tables"
     figure_dir: str = "reports/figures"
+    meta_dir: str = "reports/exp_results_meta"
     # Keep only core exp1 artifacts by default.
     # If True, also dump intermediate frames/rows/all-split metric files.
     exp1_save_debug_tables: bool = False

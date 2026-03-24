@@ -187,13 +187,16 @@ def build_configs_for_market(
     bt_cfg = BacktestConfig(fee_bps=2.0, slippage_bps=1.0, bars_per_year=252)
     table_dir = Path("reports/tables")
     figure_dir = Path("reports/figures")
+    meta_dir = Path("reports/exp_results_meta")
     if output_subdir:
         table_dir = table_dir / output_subdir
         figure_dir = figure_dir / output_subdir
+        meta_dir = meta_dir / output_subdir
 
     out_cfg = OutputConfig(
         table_dir=str(table_dir),
         figure_dir=str(figure_dir),
+        meta_dir=str(meta_dir),
         exp1_save_debug_tables=exp1_debug_tables,
         exp2_save_debug_tables=exp2_debug_tables,
     )
@@ -463,7 +466,6 @@ def parse_cli_list(raw: str | None) -> list[str]:
 
 def parse_cli_quantiles(raw: str | None) -> tuple[float, ...]:
     return _parse_float_tuple(raw)
-
 
 
 
