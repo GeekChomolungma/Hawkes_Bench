@@ -94,6 +94,33 @@ def _compute_crps_gaussian(y_true: pd.Series, mu_pred: pd.Series, sigma_pred: pd
     return float(np.nanmean(crps))
 
 
+def _compute_gaussian_interval(
+    y_index: pd.Index,
+    mu_pred: pd.Series,
+    sigma_pred: pd.Series,
+    z: float,
+) -> tuple[pd.Series, pd.Series]:
+    mu = mu_pred.reindex(y_index).astype(float)
+    sig = sigma_pred.reindex(y_index).astype(float).clip(lower=1e-12)
+    lower = mu - z * sig
+    upper = mu + z * sig
+    return lower, upper
+
+
+def _append_interval_metrics(
+    out: dict[str, float],
+    y_true: pd.Series,
+    lower: pd.Series,
+    upper: pd.Series,
+    picp_key: str,
+    q_lower: float,
+    q_upper: float,
+) -> None:
+    out[picp_key] = _compute_picp(y_true=y_true, lower=lower, upper=upper)
+    out[f"pinball_q{int(q_lower*100):02d}"] = compute_pinball_loss(y_true=y_true, y_pred_q=lower, q=q_lower)
+    out[f"pinball_q{int(q_upper*100):02d}"] = compute_pinball_loss(y_true=y_true, y_pred_q=upper, q=q_upper)
+
+
 def compute_forecast_metrics(
     y_true: pd.Series,
     mu_pred: pd.Series | None = None,
@@ -135,11 +162,10 @@ def compute_forecast_metrics(
     elif sigma_pred is not None and mu_pred is not None:
         # 80% interval for Gaussian: z ~= 1.28155
         z80 = 1.2815515655446004
-        mu = mu_pred.reindex(y.index).astype(float)
-        sig = sigma_pred.reindex(y.index).astype(float).clip(lower=1e-12)
-        lower = mu - z80 * sig
-        upper = mu + z80 * sig
-        out["picp_80"] = _compute_picp(y_true=y, lower=lower, upper=upper)
+        lower, upper = _compute_gaussian_interval(y_index=y.index, mu_pred=mu_pred, sigma_pred=sigma_pred, z=z80)
+        _append_interval_metrics(
+            out=out, y_true=y, lower=lower, upper=upper, picp_key="picp_80", q_lower=0.10, q_upper=0.90
+        )
 
     # Additional PICP 20% ~ 80% if quantiles are available.
     if quantile_preds and 0.20 in quantile_preds and 0.80 in quantile_preds:
@@ -147,11 +173,10 @@ def compute_forecast_metrics(
     elif sigma_pred is not None and mu_pred is not None:
         # 60% interval for Gaussian: z ~= 0.84162
         z60 = 0.8416212335729143
-        mu = mu_pred.reindex(y.index).astype(float)
-        sig = sigma_pred.reindex(y.index).astype(float).clip(lower=1e-12)
-        lower = mu - z60 * sig
-        upper = mu + z60 * sig
-        out["picp_60"] = _compute_picp(y_true=y, lower=lower, upper=upper)
+        lower, upper = _compute_gaussian_interval(y_index=y.index, mu_pred=mu_pred, sigma_pred=sigma_pred, z=z60)
+        _append_interval_metrics(
+            out=out, y_true=y, lower=lower, upper=upper, picp_key="picp_60", q_lower=0.20, q_upper=0.80
+        )
 
     # Direction/ranking metrics:
     # - sign_accuracy: proportion of timestamps where sign(pred) == sign(y_true)
