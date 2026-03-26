@@ -63,9 +63,10 @@ def _parse_inset_size(size_text: str) -> tuple[str, str]:
     )
 
 
-def _fill_band_gradient_from_zero(
+def _fill_band_gradient_around_center(
     ax: plt.Axes,
     x: pd.DatetimeIndex,
+    center: np.ndarray,
     band_lo: np.ndarray,
     band_hi: np.ndarray,
     label: str = "Pred Band",
@@ -78,32 +79,36 @@ def _fill_band_gradient_from_zero(
     edge_alpha: float = 0.85,
 ) -> None:
     """
-    Draw uncertainty band with strongest opacity near y=0 and fading toward both edges.
+    Draw uncertainty band with strongest opacity near a time-varying center line,
+    fading toward upper/lower band edges.
     """
     base = to_rgba(color)
     layers = max(4, int(layers))
+    c = np.asarray(center, dtype=float)
+    lo = np.asarray(band_lo, dtype=float)
+    hi = np.asarray(band_hi, dtype=float)
 
     for k in range(1, layers + 1):
         q_prev = (k - 1) / layers
         q_curr = k / layers
-        # Linear alpha decay: darkest near 0, lightest near band edges.
+        # Linear alpha decay: darkest near center, lightest near band edges.
         alpha = alpha_center - (alpha_center - alpha_edge) * (q_prev)
         alpha = float(max(0.0, min(1.0, alpha)))
 
-        # Positive direction: from 0 to band_hi
-        y1_up = band_hi * q_prev
-        y2_up = band_hi * q_curr
-        # Negative direction: from 0 to band_lo
-        y1_dn = band_lo * q_prev
-        y2_dn = band_lo * q_curr
+        # Upper half: center -> band_hi
+        y1_up = c + (hi - c) * q_prev
+        y2_up = c + (hi - c) * q_curr
+        # Lower half: center -> band_lo
+        y1_dn = c + (lo - c) * q_prev
+        y2_dn = c + (lo - c) * q_curr
 
         draw_label = label if k == 1 else None
         ax.fill_between(x, y1_up, y2_up, color=base, alpha=alpha, linewidth=0.0, label=draw_label)
         ax.fill_between(x, y1_dn, y2_dn, color=base, alpha=alpha, linewidth=0.0)
 
     if draw_edges:
-        ax.plot(x, band_hi, color=base, linewidth=edge_linewidth, alpha=edge_alpha, label=None)
-        ax.plot(x, band_lo, color=base, linewidth=edge_linewidth, alpha=edge_alpha, label=None)
+        ax.plot(x, hi, color=base, linewidth=edge_linewidth, alpha=edge_alpha, label=None)
+        ax.plot(x, lo, color=base, linewidth=edge_linewidth, alpha=edge_alpha, label=None)
 
 
 def _add_inset(
@@ -156,7 +161,15 @@ def _add_inset(
     axins.plot(xz, pz, linewidth=1.6, alpha=0.9, color="tab:blue")
     axins.plot(xz, rz, linewidth=1.3, alpha=0.85, color="tab:orange")
     if bz_lo is not None and bz_hi is not None:
-        _fill_band_gradient_from_zero(axins, xz, bz_lo, bz_hi, label="Pred Band", color="lightblue")
+        _fill_band_gradient_around_center(
+            axins,
+            xz,
+            center=pz,
+            band_lo=bz_lo,
+            band_hi=bz_hi,
+            label="Pred Band",
+            color="lightblue",
+        )
     axins.set_xlim(xz[0], xz[-1])
     axins.set_ylim(y_min - pad, y_max + pad)
     axins.grid(True, alpha=0.35)
@@ -293,6 +306,30 @@ def main() -> None:
         default=None,
         help="Optional title override. If set, replace title loaded from npy.",
     )
+    parser.add_argument(
+        "--title-fontsize",
+        type=float,
+        default=15,
+        help="Title font size. Default 15.",
+    )
+    parser.add_argument(
+        "--axis-label-fontsize",
+        type=float,
+        default=13,
+        help="Axis label font size. Default 13.",
+    )
+    parser.add_argument(
+        "--tick-fontsize",
+        type=float,
+        default=12,
+        help="Tick font size. Default 12.",
+    )
+    parser.add_argument(
+        "--legend-fontsize",
+        type=float,
+        default=12,
+        help="Legend font size. Default 12.",
+    )
     args = parser.parse_args()
 
     npy_files = _collect_npy(args.input)
@@ -320,6 +357,10 @@ def main() -> None:
             inset1_size=str(args.inset1_size),
             inset2_size=str(args.inset2_size),
             title_override=str(args.title) if args.title is not None else None,
+            title_fontsize=float(args.title_fontsize),
+            axis_label_fontsize=float(args.axis_label_fontsize),
+            tick_fontsize=float(args.tick_fontsize),
+            legend_fontsize=float(args.legend_fontsize),
         )
         if out is not None:
             converted += 1
@@ -345,6 +386,10 @@ def convert_one_with_options(
     inset1_size: str,
     inset2_size: str,
     title_override: str | None,
+    title_fontsize: float,
+    axis_label_fontsize: float,
+    tick_fontsize: float,
+    legend_fontsize: float,
 ) -> Path | None:
     meta = np.load(str(npy_path), allow_pickle=True).item()
     if str(meta.get("kind", "")) != "return_target_layer":
@@ -384,7 +429,15 @@ def convert_one_with_options(
     ax1.plot(x, pred, label="Pred Next Return", linewidth=1.8, alpha=0.9, color="tab:blue")
     ax1.plot(x, real, label="Real Next Return (GT)", linewidth=1.4, alpha=0.85, color="tab:orange")
     if has_band:
-        _fill_band_gradient_from_zero(ax1, x, band_lo, band_hi, label="Pred Band q10~q90", color="lightblue")
+        _fill_band_gradient_around_center(
+            ax1,
+            x,
+            center=pred,
+            band_lo=band_lo,
+            band_hi=band_hi,
+            label="Pred Band q10~q90",
+            color="lightblue",
+        )
     if with_inset:
         # Keep extra vertical room so the inset doesn't visually cover the main signal too much.
         y_all = [pred, real]
@@ -431,19 +484,21 @@ def convert_one_with_options(
                 inset_borderpad=inset2_borderpad,
                 inset_size=inset2_size_parsed,
             )
-    ax1.set_title(title)
+    ax1.set_title(title, fontsize=title_fontsize)
     ax1.grid(True)
-    ax1.legend()
+    ax1.tick_params(axis="both", labelsize=tick_fontsize)
+    ax1.legend(fontsize=legend_fontsize)
 
     if with_scatter and ax2 is not None:
         ax2.scatter(pred, real, s=14, alpha=0.55, label="points")
         lo = float(min(np.nanmin(pred), np.nanmin(real)))
         hi = float(max(np.nanmax(pred), np.nanmax(real)))
         ax2.plot([lo, hi], [lo, hi], linestyle="--", linewidth=1.4, label="45-degree line")
-        ax2.set_xlabel("Predicted next return")
-        ax2.set_ylabel("Real next return")
+        ax2.set_xlabel("Predicted next return", fontsize=axis_label_fontsize)
+        ax2.set_ylabel("Real next return", fontsize=axis_label_fontsize)
         ax2.grid(True)
-        ax2.legend()
+        ax2.tick_params(axis="both", labelsize=tick_fontsize)
+        ax2.legend(fontsize=legend_fontsize)
 
     suffix = []
     if with_inset:
