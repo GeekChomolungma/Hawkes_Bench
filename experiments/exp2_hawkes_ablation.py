@@ -11,10 +11,11 @@ from data.loader import load_kline_csv, time_split_df
 from data.preprocess import align_features, compute_log_return
 from dataio.forecast_loader import ForecastLoadConfig, align_forecast_with_market, load_external_forecast
 from experiments.runners import run_strategy_backtest
-from hawkes.lambda_online import fit_hawkes_theta_from_train, hawkes_lambda_online
+from hawkes.core import HawkesExpParams, lambda_online_fixed_params
+from hawkes.lambda_online import fit_hawkes_theta_from_train
 from models.whitebox.arima_garch_adapter import WhiteBoxForecaster
 from utils.market_meta import parse_market_from_csv_path
-from utils.persist import save_dataframe, save_metrics
+from utils.persist import save_dataframe, save_metrics, save_npy_payload
 from utils.visual import plot_backtest_layer
 
 
@@ -100,7 +101,7 @@ def _build_hawkes_lambda_for_quantile(
     quantile: float,
     signed_events: bool,
     unit: str,
-) -> tuple[pd.Series, float]:
+) -> tuple[pd.Series, pd.Series, pd.Series, pd.Series, float, dict[str, HawkesExpParams]]:
     r_fit = returns.reindex(idx_fit).dropna()
     tau, theta = fit_hawkes_theta_from_train(
         returns_train=r_fit,
@@ -108,16 +109,117 @@ def _build_hawkes_lambda_for_quantile(
         signed=signed_events,
         unit=unit,
     )
-    lam = hawkes_lambda_online(
-        returns=returns,
-        index=idx_all,
-        origin=idx_all[0],
-        tau=tau,
-        theta_by_key=theta,
-        signed=signed_events,
-        unit=unit,
-    )
-    return lam, float(tau)
+    r_aligned = returns.reindex(idx_all).astype(float)
+    origin = idx_all[0]
+    zeros = pd.Series(0.0, index=idx_all)
+
+    if signed_events:
+        pos_mask = (r_aligned > +float(tau)).fillna(False).to_numpy()
+        neg_mask = (r_aligned < -float(tau)).fillna(False).to_numpy()
+
+        lam_pos = zeros.copy()
+        lam_neg = zeros.copy()
+        lam_abs = zeros.copy()
+
+        if "pos" in theta and theta["pos"] is not None:
+            lam_pos = lambda_online_fixed_params(
+                index=idx_all,
+                origin=origin,
+                params=theta["pos"],
+                event_mask=pos_mask,
+                unit=unit,
+            )
+        if "neg" in theta and theta["neg"] is not None:
+            lam_neg = lambda_online_fixed_params(
+                index=idx_all,
+                origin=origin,
+                params=theta["neg"],
+                event_mask=neg_mask,
+                unit=unit,
+            )
+        lam_total = lam_pos + lam_neg
+    else:
+        abs_mask = (r_aligned.abs() > float(tau)).fillna(False).to_numpy()
+        lam_pos = zeros.copy()
+        lam_neg = zeros.copy()
+        lam_abs = zeros.copy()
+        if "abs" in theta and theta["abs"] is not None:
+            lam_abs = lambda_online_fixed_params(
+                index=idx_all,
+                origin=origin,
+                params=theta["abs"],
+                event_mask=abs_mask,
+                unit=unit,
+            )
+        lam_total = lam_abs
+
+    return lam_total, lam_pos, lam_neg, lam_abs, float(tau), theta
+
+
+def _save_event_lambda_test_payload(
+    *,
+    returns: pd.Series,
+    idx_test: pd.DatetimeIndex,
+    lam_test: pd.Series,
+    lam_pos_test: pd.Series,
+    lam_neg_test: pd.Series,
+    lam_abs_test: pd.Series,
+    theta: dict[str, HawkesExpParams],
+    tau: float,
+    quantile: float,
+    signed_events: bool,
+    title: str,
+    out_path: str,
+) -> None:
+    r_test = returns.reindex(idx_test).astype(float)
+    lam_aligned = lam_test.reindex(idx_test).astype(float).fillna(0.0)
+    lam_pos_aligned = lam_pos_test.reindex(idx_test).astype(float).fillna(0.0)
+    lam_neg_aligned = lam_neg_test.reindex(idx_test).astype(float).fillna(0.0)
+    lam_abs_aligned = lam_abs_test.reindex(idx_test).astype(float).fillna(0.0)
+
+    if signed_events:
+        event_pos = (r_test > float(tau)).fillna(False).astype(int)
+        event_neg = (r_test < -float(tau)).fillna(False).astype(int)
+        event_abs = pd.Series(0, index=idx_test, dtype=int)
+    else:
+        event_pos = pd.Series(0, index=idx_test, dtype=int)
+        event_neg = pd.Series(0, index=idx_test, dtype=int)
+        event_abs = (r_test.abs() > float(tau)).fillna(False).astype(int)
+
+    theta_pos = theta.get("pos")
+    theta_neg = theta.get("neg")
+    theta_abs = theta.get("abs")
+
+    payload = {
+        "kind": "event_lambda_recorder",
+        "title": title,
+        "test_ts_ns": pd.DatetimeIndex(idx_test),
+        "lambda_total": lam_aligned.to_numpy(dtype=float),
+        "lambda_line": lam_aligned.to_numpy(dtype=float),
+        "lambda_pos": lam_pos_aligned.to_numpy(dtype=float),
+        "lambda_neg": lam_neg_aligned.to_numpy(dtype=float),
+        "lambda_abs": lam_abs_aligned.to_numpy(dtype=float),
+        "log_return": r_test.to_numpy(dtype=float),
+        "event_tau": float(tau),
+        "event_quantile": float(quantile),
+        "signed_events": bool(signed_events),
+        "event_pos": event_pos.to_numpy(dtype=int),
+        "event_neg": event_neg.to_numpy(dtype=int),
+        "event_abs": event_abs.to_numpy(dtype=int),
+        "theta_pos_enabled": bool(theta_pos is not None),
+        "theta_neg_enabled": bool(theta_neg is not None),
+        "theta_abs_enabled": bool(theta_abs is not None),
+        "theta_pos_mu": float(theta_pos.mu) if theta_pos is not None else float("nan"),
+        "theta_pos_alpha": float(theta_pos.alpha) if theta_pos is not None else float("nan"),
+        "theta_pos_beta": float(theta_pos.beta) if theta_pos is not None else float("nan"),
+        "theta_neg_mu": float(theta_neg.mu) if theta_neg is not None else float("nan"),
+        "theta_neg_alpha": float(theta_neg.alpha) if theta_neg is not None else float("nan"),
+        "theta_neg_beta": float(theta_neg.beta) if theta_neg is not None else float("nan"),
+        "theta_abs_mu": float(theta_abs.mu) if theta_abs is not None else float("nan"),
+        "theta_abs_alpha": float(theta_abs.alpha) if theta_abs is not None else float("nan"),
+        "theta_abs_beta": float(theta_abs.beta) if theta_abs is not None else float("nan"),
+    }
+    save_npy_payload(payload, out_path)
 
 
 def run_exp2_hawkes_ablation(
@@ -281,7 +383,7 @@ def run_exp2_hawkes_ablation(
 
     # case 2: Hawkes risk adjustment with various quantile thresholds
     for q in q_list:
-        lam_full, tau = _build_hawkes_lambda_for_quantile(
+        lam_full, lam_pos_full, lam_neg_full, lam_abs_full, tau, theta = _build_hawkes_lambda_for_quantile(
             returns=returns,
             idx_fit=idx_hawkes_fit,
             idx_all=idx_all,
@@ -290,12 +392,29 @@ def run_exp2_hawkes_ablation(
             unit=unit,
         )
         lam_test = lam_full.reindex(idx_test).fillna(0.0)
+        lam_pos_test = lam_pos_full.reindex(idx_test).fillna(0.0)
+        lam_neg_test = lam_neg_full.reindex(idx_test).fillna(0.0)
+        lam_abs_test = lam_abs_full.reindex(idx_test).fillna(0.0)
 
         q_tag = f"q{int(round(float(q) * 100)):02d}"
         out["hawkes"][q_tag] = {
             "event_threshold_quantile": float(q),
             "event_threshold_tau": float(tau),
         }
+        _save_event_lambda_test_payload(
+            returns=returns,
+            idx_test=idx_test,
+            lam_test=lam_test,
+            lam_pos_test=lam_pos_test,
+            lam_neg_test=lam_neg_test,
+            lam_abs_test=lam_abs_test,
+            theta=theta,
+            tau=float(tau),
+            quantile=float(q),
+            signed_events=bool(hawkes_cfg.signed_events),
+            title=f"{mt} | Hawkes Event/Lambda | {q_tag} | Test",
+            out_path=f"{out_cfg.meta_dir}/exp2_hawkes_event_lambda_{q_tag}_{mk}.npy",
+        )
 
         if white_test is not None:
             out["hawkes"][q_tag]["white"] = _run_case(
