@@ -71,6 +71,10 @@ X_LABEL = "Time"
 Y_LABEL = "Equity"
 OUTPUT_SVG = "reports/figures/manual/exp2_equity_multi_model.svg"
 SHOW_LEGEND = False
+TITLE_FONT_SIZE = 16
+AXIS_LABEL_FONT_SIZE = 16
+TICK_LABEL_FONT_SIZE = 14
+LEGEND_FONT_SIZE = 12
 END_LABEL_FONT_SIZE = 9
 END_LABEL_X_OFFSET_PTS = 7
 END_LABEL_MIN_GAP_RATIO = 0.018
@@ -307,12 +311,13 @@ def plot_multi_model_equity(output_svg: str = OUTPUT_SVG) -> Path:
         )
 
     # 5.3 Styling
-    ax.set_title(TITLE, fontsize=14)
-    ax.set_xlabel(X_LABEL, fontsize=12)
-    ax.set_ylabel(Y_LABEL, fontsize=12)
+    ax.set_title(TITLE, fontsize=TITLE_FONT_SIZE)
+    ax.set_xlabel(X_LABEL, fontsize=AXIS_LABEL_FONT_SIZE)
+    ax.set_ylabel(Y_LABEL, fontsize=AXIS_LABEL_FONT_SIZE)
+    ax.tick_params(axis="both", labelsize=TICK_LABEL_FONT_SIZE)
     ax.grid(True, linestyle="--", alpha=0.35)
     if SHOW_LEGEND:
-        ax.legend(frameon=False, ncol=3, fontsize=10)
+        ax.legend(frameon=False, ncol=3, fontsize=LEGEND_FONT_SIZE)
 
     # Reserve right-side room for tail labels.
     x_left, x_right = ax.get_xlim()

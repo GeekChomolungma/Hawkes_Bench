@@ -46,7 +46,12 @@ FIGSIZE = (16, 9)
 # Extra x-axis padding on both sides (ratio of [train_start, test_end] span).
 # Increase right pad to separate labels in late-period segments.
 X_LEFT_PAD_RATIO = 0.01
-X_RIGHT_PAD_RATIO = 0.18
+X_RIGHT_PAD_RATIO = 0.08
+# Typography (hardcoded, editable)
+TITLE_FONTSIZE = 16
+AXIS_LABEL_FONTSIZE = 14
+AXIS_TICK_FONTSIZE = 14
+LEGEND_FONTSIZE = 14
 
 OUTPUT_DIR = Path("reports/figures/market_kline")
 
@@ -215,14 +220,16 @@ def _plot_one_symbol(symbol: str, csv_path: str, output_dir: Path) -> Path:
     _shade_windows(ax2)
 
     _draw_candles(ax1, view)
-    ax1.set_ylabel("Price")
-    ax1.set_title(f"{symbol} 1d Candlestick with Train/Val/Test Segments")
+    ax1.set_ylabel("Price", fontsize=AXIS_LABEL_FONTSIZE)
+    ax1.set_title(f"{symbol} 1d Candlestick with Train/Val/Test Segments", fontsize=TITLE_FONTSIZE)
+    ax1.tick_params(axis="both", labelsize=AXIS_TICK_FONTSIZE)
     ax1.grid(True, linestyle="--", alpha=0.25)
 
     ax2.plot(view["ts"], view["log_return"], color="#4C4C4C", linewidth=1.1, alpha=0.9)
     ax2.axhline(0.0, color="#303030", linewidth=0.8, alpha=0.9)
-    ax2.set_ylabel("LogReturn")
-    ax2.set_xlabel("Time")
+    ax2.set_ylabel("LogReturn", fontsize=AXIS_LABEL_FONTSIZE)
+    ax2.set_xlabel("Time", fontsize=AXIS_LABEL_FONTSIZE)
+    ax2.tick_params(axis="both", labelsize=AXIS_TICK_FONTSIZE)
     ax2.grid(True, linestyle="--", alpha=0.25)
 
     ax2.xaxis.set_major_locator(mdates.AutoDateLocator())
@@ -243,7 +250,7 @@ def _plot_one_symbol(symbol: str, csv_path: str, output_dir: Path) -> Path:
         Rectangle((0, 0), 1, 1, facecolor=VAL_BG_COLOR, edgecolor="none", alpha=0.35, label="Val"),
         Rectangle((0, 0), 1, 1, facecolor=TEST_BG_COLOR, edgecolor="none", alpha=0.35, label="Test"),
     ]
-    ax1.legend(handles=legend_handles, frameon=False, loc="upper left")
+    ax1.legend(handles=legend_handles, frameon=False, loc="upper right", fontsize=LEGEND_FONTSIZE)
 
     plt.tight_layout(rect=(0.0, 0.05, 1.0, 1.0))
     output_dir.mkdir(parents=True, exist_ok=True)

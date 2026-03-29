@@ -49,6 +49,11 @@ MODEL_EVENT_LAMBDA_PATHS: Dict[str, EventLambdaPairPath] = {
 OUTPUT_ROOT = Path("reports/figures/backtest")
 OUTPUT_SUBDIR = "btcusdt_1d"
 FIGSIZE = (15, 8.5)
+TITLE_FONT_SIZE = 16
+AXIS_LABEL_FONT_SIZE = 16
+TICK_LABEL_FONT_SIZE = 14
+LEGEND_FONT_SIZE = 12
+THETA_TEXT_FONT_SIZE = 9
 
 
 # -------------------------------------------------------------------
@@ -196,16 +201,17 @@ def _plot_one_event_lambda(
         ax1.set_yticks([0, 1])
         ax1.set_yticklabels(["0", "1"])
 
-    ax1.set_ylabel("Event")
+    ax1.set_ylabel("Event", fontsize=AXIS_LABEL_FONT_SIZE)
+    ax1.tick_params(axis="both", labelsize=TICK_LABEL_FONT_SIZE)
     ax1.grid(True, linestyle="--", alpha=0.35)
     ax1_r = ax1.twinx()
     ax1_r.plot(ts, log_return, color="0.35", linewidth=1.0, alpha=0.55, label="log_return")
-    ax1_r.set_ylabel("LogReturn", color="0.35")
-    ax1_r.tick_params(axis="y", colors="0.35")
+    ax1_r.set_ylabel("LogReturn", color="0.35", fontsize=AXIS_LABEL_FONT_SIZE)
+    ax1_r.tick_params(axis="y", colors="0.35", labelsize=TICK_LABEL_FONT_SIZE)
 
     h1, l1 = ax1.get_legend_handles_labels()
     h2, l2 = ax1_r.get_legend_handles_labels()
-    ax1.legend(h1 + h2, l1 + l2, frameon=False, loc="upper right")
+    ax1.legend(h1 + h2, l1 + l2, frameon=False, loc="upper right", fontsize=LEGEND_FONT_SIZE)
 
     ax2.plot(ts, lam_total, color="tab:blue", linewidth=1.7, alpha=0.95, label="lambda_total")
     if signed_events:
@@ -223,10 +229,11 @@ def _plot_one_event_lambda(
             f"theta_abs({'on' if theta_abs_enabled else 'off'}): "
             f"mu={theta_abs_mu:.4g}, a={theta_abs_alpha:.4g}, b={theta_abs_beta:.4g}"
         )
-    ax2.set_ylabel("Lambda")
-    ax2.set_xlabel("Time")
+    ax2.set_ylabel("Lambda", fontsize=AXIS_LABEL_FONT_SIZE)
+    ax2.set_xlabel("Time", fontsize=AXIS_LABEL_FONT_SIZE)
+    ax2.tick_params(axis="both", labelsize=TICK_LABEL_FONT_SIZE)
     ax2.grid(True, linestyle="--", alpha=0.35)
-    ax2.legend(frameon=False, loc="upper right")
+    ax2.legend(frameon=False, loc="upper right", fontsize=LEGEND_FONT_SIZE)
     ax2.text(
         0.01,
         0.98,
@@ -234,11 +241,11 @@ def _plot_one_event_lambda(
         transform=ax2.transAxes,
         va="top",
         ha="left",
-        fontsize=9,
+        fontsize=THETA_TEXT_FONT_SIZE,
         bbox={"boxstyle": "round,pad=0.25", "facecolor": "white", "edgecolor": "0.75", "alpha": 0.9},
     )
 
-    fig.suptitle(f"{model_name} | {strategy_name} | Event and Lambda (Test)", fontsize=13)
+    fig.suptitle(f"{model_name} | {strategy_name} | Event and Lambda (Test)", fontsize=TITLE_FONT_SIZE)
     plt.tight_layout(rect=(0.0, 0.0, 1.0, 0.97))
 
     output_dir.mkdir(parents=True, exist_ok=True)

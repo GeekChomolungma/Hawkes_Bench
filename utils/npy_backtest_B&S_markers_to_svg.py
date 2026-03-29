@@ -28,24 +28,24 @@ class BacktestTriplePath:
 # 2) Each path must point to a backtest_layer .npy file.
 MODEL_BACKTEST_PATHS: Dict[str, BacktestTriplePath] = {
     "ARIMA+GARCH": BacktestTriplePath(
-        native_no_hawkes="reports/exp_results_meta/ft/1d/zeroshot/dogeusdt/exp2_white_no_hawkes_DOGEUSDT_1d.npy",
-        hawkes_scaled_q70="reports/exp_results_meta/ft/1d/zeroshot/dogeusdt/exp2_white_hawkes_q70_DOGEUSDT_1d.npy",
-        hawkes_scaled_q90="reports/exp_results_meta/ft/1d/zeroshot/dogeusdt/exp2_white_hawkes_q90_DOGEUSDT_1d.npy",
+        native_no_hawkes="reports/exp_results_meta/ft/1d/zeroshot/btcusdt/exp2_white_no_hawkes_BTCUSDT_1d.npy",
+        hawkes_scaled_q70="reports/exp_results_meta/ft/1d/zeroshot/btcusdt/exp2_white_hawkes_q70_BTCUSDT_1d.npy",
+        hawkes_scaled_q90="reports/exp_results_meta/ft/1d/zeroshot/btcusdt/exp2_white_hawkes_q90_BTCUSDT_1d.npy",
     ),
     "Chronos2 Zeroshot": BacktestTriplePath(
-        native_no_hawkes="reports/exp_results_meta/ft/1d/zeroshot/dogeusdt/exp2_black_no_hawkes_DOGEUSDT_1d.npy",
-        hawkes_scaled_q70="reports/exp_results_meta/ft/1d/zeroshot/dogeusdt/exp2_black_hawkes_q70_DOGEUSDT_1d.npy",
-        hawkes_scaled_q90="reports/exp_results_meta/ft/1d/zeroshot/dogeusdt/exp2_black_hawkes_q90_DOGEUSDT_1d.npy",
+        native_no_hawkes="reports/exp_results_meta/ft/1d/zeroshot/btcusdt/exp2_black_no_hawkes_BTCUSDT_1d.npy",
+        hawkes_scaled_q70="reports/exp_results_meta/ft/1d/zeroshot/btcusdt/exp2_black_hawkes_q70_BTCUSDT_1d.npy",
+        hawkes_scaled_q90="reports/exp_results_meta/ft/1d/zeroshot/btcusdt/exp2_black_hawkes_q90_BTCUSDT_1d.npy",
     ),
     "Chronos2 Native FT": BacktestTriplePath(
-        native_no_hawkes="reports/exp_results_meta/ft/1d/pretrained_native_all/dogeusdt/exp2_black_no_hawkes_DOGEUSDT_1d.npy",
-        hawkes_scaled_q70="reports/exp_results_meta/ft/1d/pretrained_native_all/dogeusdt/exp2_black_hawkes_q70_DOGEUSDT_1d.npy",
-        hawkes_scaled_q90="reports/exp_results_meta/ft/1d/pretrained_native_all/dogeusdt/exp2_black_hawkes_q90_DOGEUSDT_1d.npy",
+        native_no_hawkes="reports/exp_results_meta/ft/1d/pretrained_native_all/btcusdt/exp2_black_no_hawkes_BTCUSDT_1d.npy",
+        hawkes_scaled_q70="reports/exp_results_meta/ft/1d/pretrained_native_all/btcusdt/exp2_black_hawkes_q70_BTCUSDT_1d.npy",
+        hawkes_scaled_q90="reports/exp_results_meta/ft/1d/pretrained_native_all/btcusdt/exp2_black_hawkes_q90_BTCUSDT_1d.npy",
     ),
     "Chronos2 Proposed FT": BacktestTriplePath(
-        native_no_hawkes="reports/exp_results_meta/ft/1d/pretrained_QuEXTime_all/dogeusdt/exp2_black_no_hawkes_DOGEUSDT_1d.npy",
-        hawkes_scaled_q70="reports/exp_results_meta/ft/1d/pretrained_QuEXTime_all/dogeusdt/exp2_black_hawkes_q70_DOGEUSDT_1d.npy",
-        hawkes_scaled_q90="reports/exp_results_meta/ft/1d/pretrained_QuEXTime_all/dogeusdt/exp2_black_hawkes_q90_DOGEUSDT_1d.npy",
+        native_no_hawkes="reports/exp_results_meta/ft/1d/pretrained_QuEXTime_all/btcusdt/exp2_black_no_hawkes_BTCUSDT_1d.npy",
+        hawkes_scaled_q70="reports/exp_results_meta/ft/1d/pretrained_QuEXTime_all/btcusdt/exp2_black_hawkes_q70_BTCUSDT_1d.npy",
+        hawkes_scaled_q90="reports/exp_results_meta/ft/1d/pretrained_QuEXTime_all/btcusdt/exp2_black_hawkes_q90_BTCUSDT_1d.npy",
     ),
 }
 
@@ -55,10 +55,14 @@ MODEL_BACKTEST_PATHS: Dict[str, BacktestTriplePath] = {
 # -------------------------------------------------------------------
 
 OUTPUT_ROOT = Path("reports/figures/backtest")
-OUTPUT_SUBDIR = "dogeusdt_1d"
+OUTPUT_SUBDIR = "btcusdt_1d"
 
 FIGSIZE = (15, 7)
 LINE_COLOR = "#1f77b4"
+TITLE_FONT_SIZE = 16
+AXIS_LABEL_FONT_SIZE = 16
+TICK_LABEL_FONT_SIZE = 14
+LEGEND_FONT_SIZE = 12
 
 MARKER_STYLES = {
     "open_long_ts_ns": {
@@ -291,11 +295,12 @@ def _plot_close_with_markers(
             zorder=3,
         )
 
-    ax.set_title(f"{model_name} | {strategy_name} | Close with 4 Backtest Markers", fontsize=13)
-    ax.set_xlabel("Time", fontsize=11)
-    ax.set_ylabel("Close", fontsize=11)
+    ax.set_title(f"{model_name} | {strategy_name} | Close with 4 Backtest Markers", fontsize=TITLE_FONT_SIZE)
+    ax.set_xlabel("Time", fontsize=AXIS_LABEL_FONT_SIZE)
+    ax.set_ylabel("Close", fontsize=AXIS_LABEL_FONT_SIZE)
+    ax.tick_params(axis="both", labelsize=TICK_LABEL_FONT_SIZE)
     ax.grid(True, linestyle="--", alpha=0.35)
-    ax.legend(frameon=False)
+    ax.legend(frameon=False, fontsize=LEGEND_FONT_SIZE)
 
     output_dir.mkdir(parents=True, exist_ok=True)
     model_tag = _sanitize_token(model_name)
