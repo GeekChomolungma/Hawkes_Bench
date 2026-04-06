@@ -24,20 +24,20 @@ class EventLambdaPairPath:
 
 MODEL_EVENT_LAMBDA_PATHS: Dict[str, EventLambdaPairPath] = {
     "ARIMA+GARCH": EventLambdaPairPath(
-        hawkes_scaled_q70="reports/exp_results_meta/ft/1d/zeroshot/btcusdt/exp2_hawkes_event_lambda_q70_BTCUSDT_1d.npy",
-        hawkes_scaled_q90="reports/exp_results_meta/ft/1d/zeroshot/btcusdt/exp2_hawkes_event_lambda_q90_BTCUSDT_1d.npy",
+        hawkes_scaled_q70="reports/exp_results_meta/ft/1d/zeroshot/dogeusdt/exp2_hawkes_event_lambda_q70_DOGEUSDT_1d.npy",
+        hawkes_scaled_q90="reports/exp_results_meta/ft/1d/zeroshot/dogeusdt/exp2_hawkes_event_lambda_q90_DOGEUSDT_1d.npy",
     ),
     "Chronos2 Zeroshot": EventLambdaPairPath(
-        hawkes_scaled_q70="reports/exp_results_meta/ft/1d/zeroshot/btcusdt/exp2_hawkes_event_lambda_q70_BTCUSDT_1d.npy",
-        hawkes_scaled_q90="reports/exp_results_meta/ft/1d/zeroshot/btcusdt/exp2_hawkes_event_lambda_q90_BTCUSDT_1d.npy",
+        hawkes_scaled_q70="reports/exp_results_meta/ft/1d/zeroshot/dogeusdt/exp2_hawkes_event_lambda_q70_DOGEUSDT_1d.npy",
+        hawkes_scaled_q90="reports/exp_results_meta/ft/1d/zeroshot/dogeusdt/exp2_hawkes_event_lambda_q90_DOGEUSDT_1d.npy",
     ),
     "Chronos2 Native FT": EventLambdaPairPath(
-        hawkes_scaled_q70="reports/exp_results_meta/ft/1d/pretrained_native_all/btcusdt/exp2_hawkes_event_lambda_q70_BTCUSDT_1d.npy",
-        hawkes_scaled_q90="reports/exp_results_meta/ft/1d/pretrained_native_all/btcusdt/exp2_hawkes_event_lambda_q90_BTCUSDT_1d.npy",
+        hawkes_scaled_q70="reports/exp_results_meta/ft/1d/pretrained_native_all/dogeusdt/exp2_hawkes_event_lambda_q70_DOGEUSDT_1d.npy",
+        hawkes_scaled_q90="reports/exp_results_meta/ft/1d/pretrained_native_all/dogeusdt/exp2_hawkes_event_lambda_q90_DOGEUSDT_1d.npy",
     ),
     "Chronos2 Proposed FT": EventLambdaPairPath(
-        hawkes_scaled_q70="reports/exp_results_meta/ft/1d/pretrained_QuEXTime_all/btcusdt/exp2_hawkes_event_lambda_q70_BTCUSDT_1d.npy",
-        hawkes_scaled_q90="reports/exp_results_meta/ft/1d/pretrained_QuEXTime_all/btcusdt/exp2_hawkes_event_lambda_q90_BTCUSDT_1d.npy",
+        hawkes_scaled_q70="reports/exp_results_meta/ft/1d/pretrained_QuEXTime_all/dogeusdt/exp2_hawkes_event_lambda_q70_DOGEUSDT_1d.npy",
+        hawkes_scaled_q90="reports/exp_results_meta/ft/1d/pretrained_QuEXTime_all/dogeusdt/exp2_hawkes_event_lambda_q90_DOGEUSDT_1d.npy",
     ),
 }
 
@@ -47,12 +47,12 @@ MODEL_EVENT_LAMBDA_PATHS: Dict[str, EventLambdaPairPath] = {
 # -------------------------------------------------------------------
 
 OUTPUT_ROOT = Path("reports/figures/backtest")
-OUTPUT_SUBDIR = "btcusdt_1d"
+OUTPUT_SUBDIR = "dogeusdt_1d"
 FIGSIZE = (15, 8.5)
-TITLE_FONT_SIZE = 16
-AXIS_LABEL_FONT_SIZE = 16
-TICK_LABEL_FONT_SIZE = 14
-LEGEND_FONT_SIZE = 12
+TITLE_FONT_SIZE = 20
+AXIS_LABEL_FONT_SIZE = 18
+TICK_LABEL_FONT_SIZE = 18
+LEGEND_FONT_SIZE = 14
 THETA_TEXT_FONT_SIZE = 9
 
 
@@ -245,7 +245,7 @@ def _plot_one_event_lambda(
         bbox={"boxstyle": "round,pad=0.25", "facecolor": "white", "edgecolor": "0.75", "alpha": 0.9},
     )
 
-    fig.suptitle(f"{model_name} | {strategy_name} | Event and Lambda (Test)", fontsize=TITLE_FONT_SIZE)
+    fig.suptitle(f"{strategy_name} | Event and Lambda", fontsize=TITLE_FONT_SIZE)
     plt.tight_layout(rect=(0.0, 0.0, 1.0, 0.97))
 
     output_dir.mkdir(parents=True, exist_ok=True)

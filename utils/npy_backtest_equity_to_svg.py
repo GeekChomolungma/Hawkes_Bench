@@ -28,21 +28,21 @@ class BacktestPairPath:
 # 3) native_no_hawkes -> dashed line
 # 4) hawkes_scaled    -> solid line
 MODEL_BACKTEST_PATHS: Dict[str, BacktestPairPath] = {
-    "ARIMA+GARCH": BacktestPairPath(
-        native_no_hawkes="reports/exp_results_meta/ft/1d/zeroshot/btcusdt/exp2_white_no_hawkes_BTCUSDT_1d.npy",
-        hawkes_scaled="reports/exp_results_meta/ft/1d/zeroshot/btcusdt/exp2_white_hawkes_q70_BTCUSDT_1d.npy",
+    "ARIMA-GARCH": BacktestPairPath(
+        native_no_hawkes="reports/exp_results_meta/ft/1d/zeroshot/dogeusdt/exp2_white_no_hawkes_DOGEUSDT_1d.npy",
+        hawkes_scaled="reports/exp_results_meta/ft/1d/zeroshot/dogeusdt/exp2_white_hawkes_q70_DOGEUSDT_1d.npy",
     ),
     "Chronos2 Zeroshot": BacktestPairPath(
-        native_no_hawkes="reports/exp_results_meta/ft/1d/zeroshot/btcusdt/exp2_black_no_hawkes_BTCUSDT_1d.npy",
-        hawkes_scaled="reports/exp_results_meta/ft/1d/zeroshot/btcusdt/exp2_black_hawkes_q70_BTCUSDT_1d.npy",
+        native_no_hawkes="reports/exp_results_meta/ft/1d/zeroshot/dogeusdt/exp2_black_no_hawkes_DOGEUSDT_1d.npy",
+        hawkes_scaled="reports/exp_results_meta/ft/1d/zeroshot/dogeusdt/exp2_black_hawkes_q70_DOGEUSDT_1d.npy",
     ),
     "Chronos2 Native FT": BacktestPairPath(
-        native_no_hawkes="reports/exp_results_meta/ft/1d/pretrained_native_all/btcusdt/exp2_black_no_hawkes_BTCUSDT_1d.npy",
-        hawkes_scaled="reports/exp_results_meta/ft/1d/pretrained_native_all/btcusdt/exp2_black_hawkes_q70_BTCUSDT_1d.npy",
+        native_no_hawkes="reports/exp_results_meta/ft/1d/pretrained_native_all/dogeusdt/exp2_black_no_hawkes_DOGEUSDT_1d.npy",
+        hawkes_scaled="reports/exp_results_meta/ft/1d/pretrained_native_all/dogeusdt/exp2_black_hawkes_q70_DOGEUSDT_1d.npy",
     ),
-    "Chronos2 Proposed FT": BacktestPairPath(
-        native_no_hawkes="reports/exp_results_meta/ft/1d/pretrained_QuEXTime_all/btcusdt/exp2_black_no_hawkes_BTCUSDT_1d.npy",
-        hawkes_scaled="reports/exp_results_meta/ft/1d/pretrained_QuEXTime_all/btcusdt/exp2_black_hawkes_q70_BTCUSDT_1d.npy",
+    "Chronos2-QuExTime": BacktestPairPath(
+        native_no_hawkes="reports/exp_results_meta/ft/1d/pretrained_QuEXTime_all/dogeusdt/exp2_black_no_hawkes_DOGEUSDT_1d.npy",
+        hawkes_scaled="reports/exp_results_meta/ft/1d/pretrained_QuEXTime_all/dogeusdt/exp2_black_hawkes_q70_DOGEUSDT_1d.npy",
     ),
 }
 
@@ -52,10 +52,10 @@ MODEL_BACKTEST_PATHS: Dict[str, BacktestPairPath] = {
 # -------------------------------------------------------------------
 
 MODEL_COLORS = {
-    "ARIMA+GARCH": "#4C78A8",
+    "ARIMA-GARCH": "#4C78A8",
     "Chronos2 Zeroshot": "#72B7B2",
     "Chronos2 Native FT": "#F58518",
-    "Chronos2 Proposed FT": "#E45756",
+    "Chronos2-QuExTime": "#E45756",
 }
 
 BUY_HOLD_COLOR = "#7A7A7A"
@@ -66,21 +66,31 @@ BUY_HOLD_COLOR = "#7A7A7A"
 # -------------------------------------------------------------------
 
 FIGSIZE = (15, 7.5)
-TITLE = "BTCUSDT Equity Curves: Native Signal (Dashed) vs Hawkes-Scaled Signal (Solid)"
+TITLE = "DOGEUSDT Equity Curves Comparison"
 X_LABEL = "Time"
 Y_LABEL = "Equity"
 OUTPUT_SVG = "reports/figures/manual/exp2_equity_multi_model.svg"
 SHOW_LEGEND = False
-TITLE_FONT_SIZE = 16
-AXIS_LABEL_FONT_SIZE = 16
+TITLE_FONT_SIZE = 28
+AXIS_LABEL_FONT_SIZE = 18
 TICK_LABEL_FONT_SIZE = 14
 LEGEND_FONT_SIZE = 12
-END_LABEL_FONT_SIZE = 9
+LEGEND_NCOL = 3
+LEGEND_FRAME_ON = False
+LEGEND_FRAME_ALPHA = 0.90
+LEGEND_EDGE_COLOR = "#333333"
+LEGEND_FACE_COLOR = "white"
+END_LABEL_FONT_SIZE = 18
 END_LABEL_X_OFFSET_PTS = 7
 END_LABEL_MIN_GAP_RATIO = 0.018
+# Tail-label box style (right-side inline legend look)
+END_LABEL_BOX_PAD = 0.18
+END_LABEL_BOX_FACE_COLOR = "white"
+END_LABEL_BOX_LINEWIDTH = 1.2
+END_LABEL_BOX_ALPHA = 0.92
 # Right-side x-axis padding ratio for tail labels.
 # Final xlim right = x_right + x_span * X_RIGHT_PAD_RATIO
-X_RIGHT_PAD_RATIO = 0.18
+X_RIGHT_PAD_RATIO = 0.35
 
 
 # -------------------------------------------------------------------
@@ -195,12 +205,12 @@ def _add_tail_labels(
         is_hawkes = bool(p.get("is_hawkes", False))
         is_bold = bool(p.get("bold", False))
         bbox_style = {
-            "boxstyle": "round,pad=0.18",
-            "facecolor": "white",
+            "boxstyle": f"round,pad={END_LABEL_BOX_PAD}",
+            "facecolor": END_LABEL_BOX_FACE_COLOR,
             "edgecolor": p["color"],
-            "linewidth": 0.9,
+            "linewidth": END_LABEL_BOX_LINEWIDTH,
             "linestyle": "-" if is_hawkes else "--",
-            "alpha": 0.92,
+            "alpha": END_LABEL_BOX_ALPHA,
         }
         ax.annotate(
             p["label"],
@@ -247,13 +257,15 @@ def plot_multi_model_equity(output_svg: str = OUTPUT_SVG) -> Path:
             linewidth=1.9,
             color=color,
             alpha=0.95,
-            label=f"{model_name} | Native",
+            #label=f"{model_name} | Native",
+            label=f"{model_name}",
         )
         line_endpoints.append(
             {
                 "x": ts_native[-1],
                 "y": float(eq_native[-1]),
-                "label": f"{model_name} | Native",
+                #"label": f"{model_name} | Native",
+                "label": f"{model_name}",
                 "color": color,
                 "is_hawkes": False,
                 "bold": False,
@@ -279,7 +291,7 @@ def plot_multi_model_equity(output_svg: str = OUTPUT_SVG) -> Path:
                 "is_hawkes": True,
                 # Minimal-intrusion hardcode:
                 # only Proposed FT + Hawkes tail label is bold.
-                "bold": (model_name == "Chronos2 Proposed FT"),
+                "bold": (model_name == "Chronos2 Native FT"),
             }
         )
 
@@ -317,7 +329,16 @@ def plot_multi_model_equity(output_svg: str = OUTPUT_SVG) -> Path:
     ax.tick_params(axis="both", labelsize=TICK_LABEL_FONT_SIZE)
     ax.grid(True, linestyle="--", alpha=0.35)
     if SHOW_LEGEND:
-        ax.legend(frameon=False, ncol=3, fontsize=LEGEND_FONT_SIZE)
+        leg = ax.legend(
+            frameon=LEGEND_FRAME_ON,
+            ncol=LEGEND_NCOL,
+            fontsize=LEGEND_FONT_SIZE,
+        )
+        if LEGEND_FRAME_ON and leg is not None:
+            frame = leg.get_frame()
+            frame.set_alpha(LEGEND_FRAME_ALPHA)
+            frame.set_edgecolor(LEGEND_EDGE_COLOR)
+            frame.set_facecolor(LEGEND_FACE_COLOR)
 
     # Reserve right-side room for tail labels.
     x_left, x_right = ax.get_xlim()

@@ -2,6 +2,9 @@
 from typing import Dict, List
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.legend_handler import HandlerBase
+from matplotlib.lines import Line2D
+from matplotlib.patches import FancyBboxPatch, Rectangle
 
 
 @dataclass
@@ -16,7 +19,6 @@ class ModelMetrics:
 
 whitebox = ModelMetrics(
     name="ARIMA+GARCH",
-    # Doge metrics
     metrics={
         "mae": 0.026029564413503282,
         "rmse": 0.0357428128596628,
@@ -30,7 +32,6 @@ whitebox = ModelMetrics(
 
 zeroshot = ModelMetrics(
     name="Chronos2 Zeroshot",
-    # Doge metrics
     metrics={
         "mae": 0.02551316594610521,
         "rmse": 0.03514076519552154,
@@ -44,7 +45,6 @@ zeroshot = ModelMetrics(
 
 native_ft = ModelMetrics(
     name="Chronos2 Native FT",
-    # Doge metrics
     metrics={
         "mae": 0.030250445508426545,
         "rmse": 0.03744389767732508,
@@ -58,7 +58,6 @@ native_ft = ModelMetrics(
 
 proposed_ft = ModelMetrics(
     name="Chronos2 Proposed FT",
-    # Doge metrics
     metrics={
         "mae": 0.03221851408135618,
         "rmse": 0.03958706454582015,
@@ -115,8 +114,95 @@ VALUE_TEXT_OFFSET_RATIO = 0.018
 VALUE_TEXT_FONTSIZE = 9
 DEFAULT_VALUE_TEXT_COLOR = "black"
 
+# Typography (hardcoded, editable)
+TITLE_FONTSIZE = 28
+AXIS_LABEL_FONTSIZE = 18
+X_TICK_FONTSIZE = 20
+Y_TICK_FONTSIZE = 16
+LEGEND_FONTSIZE = 16
+
+# Shared figure size for side-by-side placement in Overleaf.
+FIGSIZE_TRADITIONAL = (9.5, 5.5)
+FIGSIZE_TREND = FIGSIZE_TRADITIONAL
+FIGSIZE_RISK = (FIGSIZE_TRADITIONAL[0] * 2.0, FIGSIZE_TRADITIONAL[1])
+
 # Bar thickness (horizontal width). Increase this to make bars wider.
 BAR_WIDTH = 0.32
+
+# Traditional-metrics split style knobs:
+# MAE (left block) -> hatched / hollow
+# RMSE (right block) -> solid fill
+TRADITIONAL_MAE_HATCH = "///"
+TRADITIONAL_MAE_FILL = False
+TRADITIONAL_MAE_ALPHA = 1.0
+TRADITIONAL_MAE_EDGEWIDTH = 1.2
+
+TRADITIONAL_RMSE_HATCH = None
+TRADITIONAL_RMSE_FILL = True
+TRADITIONAL_RMSE_ALPHA = 0.9
+TRADITIONAL_RMSE_EDGEWIDTH = 1.0
+
+# Risk-metrics style knobs (3 blocks, 3 distinct visual encodings)
+# q10 -> rectangular frame + wave fill
+RISK_Q10_SHAPE = "rect"
+RISK_Q10_FILL = False
+RISK_Q10_HATCH = None
+RISK_Q10_ALPHA = 1.0
+RISK_Q10_EDGEWIDTH = 1.8
+RISK_Q10_WAVE_FILL = True
+RISK_Q10_WAVE_ALPHA = 0.38
+RISK_Q10_WAVE_LINEWIDTH = 0.95
+RISK_Q10_WAVE_SPACING_RATIO = 0.20
+RISK_Q10_WAVE_AMPLITUDE_RATIO = 0.08
+RISK_Q10_WAVE_WAVELENGTH_RATIO = 0.55
+
+# q90 -> hatched hollow (thick border)
+RISK_Q90_SHAPE = "rect"
+RISK_Q90_FILL = False
+RISK_Q90_HATCH = "///"
+RISK_Q90_ALPHA = 1.0
+RISK_Q90_EDGEWIDTH = 1.7
+RISK_Q90_ROUNDING_SIZE = 0.06
+RISK_Q90_WAVE_FILL = False
+
+# Tail Avg -> rounded solid
+RISK_TAIL_SHAPE = "rounded"
+RISK_TAIL_FILL = True
+RISK_TAIL_HATCH = None
+RISK_TAIL_ALPHA = 0.88
+RISK_TAIL_EDGEWIDTH = 1.0
+RISK_TAIL_ROUNDING_SIZE = 0.06
+RISK_TAIL_WAVE_FILL = False
+
+# Trend-metrics split style knobs:
+# Sign Accuracy -> rounded solid bars
+# Rank IC      -> rectangular hollow bars (thick border)
+TREND_SIGN_SHAPE = "rect"
+TREND_SIGN_FILL = False
+TREND_SIGN_HATCH = None
+TREND_SIGN_ALPHA = 1.0
+TREND_SIGN_EDGEWIDTH = 2.0
+# Rounded corner radius in data-x units (should be small, near bar width scale).
+TREND_SIGN_ROUNDING_SIZE = 0.06
+TREND_SIGN_WAVE_FILL = True
+TREND_SIGN_WAVE_ALPHA = 0.40
+TREND_SIGN_WAVE_LINEWIDTH = 1.0
+TREND_SIGN_WAVE_SPACING_RATIO = 0.20
+TREND_SIGN_WAVE_AMPLITUDE_RATIO = 0.08
+TREND_SIGN_WAVE_WAVELENGTH_RATIO = 0.55
+
+TREND_RANKIC_SHAPE = "rounded"
+TREND_RANKIC_FILL = True
+TREND_RANKIC_HATCH = None
+TREND_RANKIC_ALPHA = 0.9
+TREND_RANKIC_EDGEWIDTH = 1.0
+TREND_RANKIC_ROUNDING_SIZE = 0.06
+TREND_RANKIC_WAVE_FILL = False
+TREND_RANKIC_WAVE_ALPHA = 0.40
+TREND_RANKIC_WAVE_LINEWIDTH = 1.0
+TREND_RANKIC_WAVE_SPACING_RATIO = 0.20
+TREND_RANKIC_WAVE_AMPLITUDE_RATIO = 0.08
+TREND_RANKIC_WAVE_WAVELENGTH_RATIO = 0.55
 
 # Optional visibility overrides (same key style as color overrides).
 # True  -> force show value label
@@ -239,6 +325,263 @@ def _resolve_value_label_visible(model_name: str, block_label: str) -> bool:
     return bool(DEFAULT_SHOW_VALUE_TEXT)
 
 
+class _HalfSplitLegendHandle:
+    """Legend proxy: left half MAE(hatched), right half RMSE(solid)."""
+
+    def __init__(self, color: str, mae_hatch: str = TRADITIONAL_MAE_HATCH) -> None:
+        self.color = color
+        self.mae_hatch = mae_hatch
+
+
+class _HalfSplitLegendHandler(HandlerBase):
+    def create_artists(
+        self,
+        legend,
+        orig_handle,
+        xdescent,
+        ydescent,
+        width,
+        height,
+        fontsize,
+        trans,
+    ):
+        left = Rectangle(
+            (xdescent, ydescent),
+            width * 0.5,
+            height,
+            facecolor="none",
+            edgecolor=orig_handle.color,
+            hatch=orig_handle.mae_hatch,
+            linewidth=1.0,
+            transform=trans,
+        )
+        right = Rectangle(
+            (xdescent + width * 0.5, ydescent),
+            width * 0.5,
+            height,
+            facecolor=orig_handle.color,
+            edgecolor=orig_handle.color,
+            linewidth=1.0,
+            transform=trans,
+            alpha=TRADITIONAL_RMSE_ALPHA,
+        )
+        return [left, right]
+
+
+class _TrendSplitLegendHandle:
+    """Legend proxy: left Sign Accuracy(solid rounded), right Rank IC(hollow + waves)."""
+
+    def __init__(self, color: str) -> None:
+        self.color = color
+
+
+class _TrendSplitLegendHandler(HandlerBase):
+    def create_artists(
+        self,
+        legend,
+        orig_handle,
+        xdescent,
+        ydescent,
+        width,
+        height,
+        fontsize,
+        trans,
+    ):
+        if TREND_SIGN_SHAPE == "rounded":
+            left = FancyBboxPatch(
+                (xdescent, ydescent),
+                width * 0.5,
+                height,
+                boxstyle="round,pad=0,rounding_size=1.8",
+                facecolor=orig_handle.color if TREND_SIGN_FILL else "none",
+                edgecolor=orig_handle.color,
+                linewidth=TREND_SIGN_EDGEWIDTH,
+                alpha=TREND_SIGN_ALPHA,
+                transform=trans,
+            )
+        else:
+            left = Rectangle(
+                (xdescent, ydescent),
+                width * 0.5,
+                height,
+                facecolor=orig_handle.color if TREND_SIGN_FILL else "none",
+                edgecolor=orig_handle.color,
+                linewidth=TREND_SIGN_EDGEWIDTH,
+                alpha=TREND_SIGN_ALPHA,
+                transform=trans,
+            )
+
+        if TREND_RANKIC_SHAPE == "rounded":
+            right = FancyBboxPatch(
+                (xdescent + width * 0.5, ydescent),
+                width * 0.5,
+                height,
+                boxstyle="round,pad=0,rounding_size=1.8",
+                facecolor=orig_handle.color if TREND_RANKIC_FILL else "none",
+                edgecolor=orig_handle.color,
+                linewidth=TREND_RANKIC_EDGEWIDTH,
+                alpha=TREND_RANKIC_ALPHA,
+                transform=trans,
+            )
+        else:
+            right = Rectangle(
+                (xdescent + width * 0.5, ydescent),
+                width * 0.5,
+                height,
+                facecolor=orig_handle.color if TREND_RANKIC_FILL else "none",
+                edgecolor=orig_handle.color,
+                linewidth=TREND_RANKIC_EDGEWIDTH,
+                alpha=TREND_RANKIC_ALPHA,
+                transform=trans,
+            )
+
+        artists = [left, right]
+        if TREND_SIGN_WAVE_FILL:
+            xl0 = xdescent
+            xl1 = xdescent + width * 0.5
+            yl0 = ydescent
+            yl1 = ydescent + height
+            ys = np.linspace(yl0 + height * 0.18, yl1 - height * 0.18, 3)
+            x = np.linspace(xl0, xl1, 40)
+            for i, y0 in enumerate(ys):
+                amp = height * 0.08
+                wl = max(1e-6, (xl1 - xl0) * 0.7)
+                y = y0 + amp * np.sin((2 * np.pi * (x - xl0) / wl) + i * np.pi / 3.0)
+                line = Line2D(
+                    x,
+                    y,
+                    color=orig_handle.color,
+                    alpha=TREND_SIGN_WAVE_ALPHA,
+                    linewidth=1.0,
+                    transform=trans,
+                )
+                line.set_clip_path(left)
+                artists.append(line)
+        if TREND_RANKIC_WAVE_FILL:
+            xr0 = xdescent + width * 0.5
+            xr1 = xdescent + width
+            yr0 = ydescent
+            yr1 = ydescent + height
+            ys = np.linspace(yr0 + height * 0.18, yr1 - height * 0.18, 3)
+            x = np.linspace(xr0, xr1, 40)
+            for i, y0 in enumerate(ys):
+                amp = height * 0.08
+                wl = max(1e-6, (xr1 - xr0) * 0.7)
+                y = y0 + amp * np.sin((2 * np.pi * (x - xr0) / wl) + i * np.pi / 3.0)
+                line = Line2D(
+                    x,
+                    y,
+                    color=orig_handle.color,
+                    alpha=TREND_RANKIC_WAVE_ALPHA,
+                    linewidth=1.0,
+                    transform=trans,
+                )
+                line.set_clip_path(right)
+                artists.append(line)
+        return artists
+
+
+class _RiskTripleLegendHandle:
+    """Legend proxy: q10(left wave-frame), q90(mid rounded-solid), tail(right hatched-frame)."""
+
+    def __init__(self, color: str) -> None:
+        self.color = color
+
+
+class _RiskTripleLegendHandler(HandlerBase):
+    def create_artists(
+        self,
+        legend,
+        orig_handle,
+        xdescent,
+        ydescent,
+        width,
+        height,
+        fontsize,
+        trans,
+    ):
+        w = width / 3.0
+        left = Rectangle(
+            (xdescent, ydescent),
+            w,
+            height,
+            facecolor=orig_handle.color if RISK_Q10_FILL else "none",
+            edgecolor=orig_handle.color,
+            linewidth=RISK_Q10_EDGEWIDTH,
+            alpha=RISK_Q10_ALPHA,
+            transform=trans,
+        )
+        if RISK_Q90_SHAPE == "rounded":
+            mid = FancyBboxPatch(
+                (xdescent + w, ydescent),
+                w,
+                height,
+                boxstyle="round,pad=0,rounding_size=1.8",
+                facecolor=orig_handle.color if RISK_Q90_FILL else "none",
+                edgecolor=orig_handle.color,
+                linewidth=RISK_Q90_EDGEWIDTH,
+                hatch=RISK_Q90_HATCH,
+                alpha=RISK_Q90_ALPHA,
+                transform=trans,
+            )
+        else:
+            mid = Rectangle(
+                (xdescent + w, ydescent),
+                w,
+                height,
+                facecolor=orig_handle.color if RISK_Q90_FILL else "none",
+                edgecolor=orig_handle.color,
+                linewidth=RISK_Q90_EDGEWIDTH,
+                hatch=RISK_Q90_HATCH,
+                alpha=RISK_Q90_ALPHA,
+                transform=trans,
+            )
+        if RISK_TAIL_SHAPE == "rounded":
+            right = FancyBboxPatch(
+                (xdescent + 2 * w, ydescent),
+                w,
+                height,
+                boxstyle="round,pad=0,rounding_size=1.8",
+                facecolor=orig_handle.color if RISK_TAIL_FILL else "none",
+                edgecolor=orig_handle.color,
+                linewidth=RISK_TAIL_EDGEWIDTH,
+                hatch=RISK_TAIL_HATCH,
+                alpha=RISK_TAIL_ALPHA,
+                transform=trans,
+            )
+        else:
+            right = Rectangle(
+                (xdescent + 2 * w, ydescent),
+                w,
+                height,
+                facecolor=orig_handle.color if RISK_TAIL_FILL else "none",
+                edgecolor=orig_handle.color,
+                linewidth=RISK_TAIL_EDGEWIDTH,
+                hatch=RISK_TAIL_HATCH,
+                alpha=RISK_TAIL_ALPHA,
+                transform=trans,
+            )
+        artists = [left, mid, right]
+        if RISK_Q10_WAVE_FILL:
+            ys = np.linspace(ydescent + height * 0.18, ydescent + height * 0.82, 3)
+            x = np.linspace(xdescent, xdescent + w, 40)
+            for i, y0 in enumerate(ys):
+                amp = height * 0.08
+                wl = max(1e-6, w * 0.7)
+                y = y0 + amp * np.sin((2 * np.pi * (x - xdescent) / wl) + i * np.pi / 3.0)
+                line = Line2D(
+                    x,
+                    y,
+                    color=orig_handle.color,
+                    alpha=RISK_Q10_WAVE_ALPHA,
+                    linewidth=RISK_Q10_WAVE_LINEWIDTH,
+                    transform=trans,
+                )
+                line.set_clip_path(left)
+                artists.append(line)
+        return artists
+
+
 # -------------------------------------------------------------------
 # 3. Helper functions
 # -------------------------------------------------------------------
@@ -264,6 +607,54 @@ def format_metric_value(v: float) -> str:
     return f"{v:.5f}"
 
 
+def _draw_wave_fill_in_bar(
+    ax: plt.Axes,
+    clip_patch,
+    x_center: float,
+    bar_width: float,
+    y_value: float,
+    color: str,
+    alpha: float,
+    linewidth: float,
+    spacing_ratio: float,
+    amplitude_ratio: float,
+    wavelength_ratio: float,
+) -> None:
+    """Draw sine-wave strokes clipped inside one bar."""
+    if not np.isfinite(y_value) or y_value == 0:
+        return
+    x_left = x_center - bar_width / 2.0
+    x_right = x_center + bar_width / 2.0
+    y_bottom = min(0.0, float(y_value))
+    y_top = max(0.0, float(y_value))
+    h = y_top - y_bottom
+    if h <= 0:
+        return
+
+    spacing = max(1e-6, h * max(0.02, float(spacing_ratio)))
+    amplitude = h * max(0.01, float(amplitude_ratio))
+    wavelength = bar_width * max(0.15, float(wavelength_ratio))
+
+    x_vals = np.linspace(x_left, x_right, 100)
+    y_base = y_bottom + spacing * 0.5
+    i = 0
+    while y_base < y_top:
+        phase = i * (np.pi / 3.0)
+        y_vals = y_base + amplitude * np.sin((2.0 * np.pi * (x_vals - x_left) / wavelength) + phase)
+        ax.plot(
+            x_vals,
+            y_vals,
+            color=color,
+            alpha=float(alpha),
+            linewidth=float(linewidth),
+            clip_path=clip_patch,
+            clip_on=True,
+            zorder=2.3,
+        )
+        y_base += spacing
+        i += 1
+
+
 def plot_grouped_metric_blocks(
     metric_blocks: List[Dict],
     title: str,
@@ -275,6 +666,10 @@ def plot_grouped_metric_blocks(
     value_text_offset_ratio: float = VALUE_TEXT_OFFSET_RATIO,
     value_text_fontsize: int = VALUE_TEXT_FONTSIZE,
     bar_width: float = BAR_WIDTH,
+    block_spacing: float = 1.8,
+    legend_handles=None,
+    legend_labels=None,
+    legend_handler_map=None,
 ) -> None:
     """
     Draw grouped bars where each x-block is one metric, and each model contributes one bar.
@@ -291,7 +686,7 @@ def plot_grouped_metric_blocks(
     n_blocks = len(metric_blocks)
 
     # X center positions of metric blocks. Larger step widens spacing between blocks.
-    block_centers = np.arange(n_blocks) * 1.8
+    block_centers = np.arange(n_blocks) * float(block_spacing)
     bar_width = float(bar_width)
     if bar_width <= 0:
         raise ValueError("bar_width must be > 0")
@@ -308,10 +703,9 @@ def plot_grouped_metric_blocks(
     all_vals = []
 
     for model_idx, model in enumerate(MODELS):
-        # Final x positions for this model across all blocks.
-        xs = block_centers + offsets[model_idx]
         ys = []
-        for block in metric_blocks:
+        model_bar_records = []
+        for block_idx, block in enumerate(metric_blocks):
             if "func" in block:
                 val = block["func"](model)
             else:
@@ -320,17 +714,73 @@ def plot_grouped_metric_blocks(
                 val = np.nan
             ys.append(val)
 
-        # Convert to numeric array so None -> nan handling and finite checks are uniform.
+            x = float(block_centers[block_idx] + offsets[model_idx])
+            y = float(val) if np.isfinite(val) else np.nan
+
+            fill = bool(block.get("fill", True))
+            hatch = block.get("hatch", None)
+            alpha = float(block.get("alpha", 0.9))
+            edge_lw = float(block.get("edge_linewidth", 1.0))
+            base_color = MODEL_COLORS[model.name]
+            face_color = base_color if fill else "none"
+
+            shape = str(block.get("shape", "rect")).strip().lower()
+            if np.isfinite(y) and shape == "rounded":
+                y0 = 0.0 if y >= 0 else y
+                h = abs(y)
+                rounding_size = float(block.get("rounding_size", 0.06))
+                # Prevent over-rounded geometry on tiny bars (can create SVG artifacts).
+                max_rounding = max(1e-6, min(bar_width * 0.45, h * 0.45))
+                rounding_size = min(rounding_size, max_rounding)
+                rounded = FancyBboxPatch(
+                    (x - bar_width / 2.0, y0),
+                    bar_width,
+                    h,
+                    boxstyle=f"round,pad=0,rounding_size={rounding_size}",
+                    facecolor=face_color,
+                    edgecolor=base_color,
+                    linewidth=edge_lw,
+                    hatch=hatch,
+                    alpha=alpha,
+                    zorder=2,
+                )
+                ax.add_patch(rounded)
+                if block_idx == 0:
+                    rounded.set_label(model.name)
+                patch_obj = rounded
+            else:
+                bars = ax.bar(
+                    [x],
+                    [y],
+                    width=bar_width,
+                    label=model.name if block_idx == 0 else None,
+                    color=face_color,
+                    edgecolor=base_color,
+                    linewidth=edge_lw,
+                    hatch=hatch,
+                    alpha=alpha,
+                )
+                patch_obj = bars.patches[0]
+
+            if bool(block.get("wave_fill", False)) and np.isfinite(y):
+                _draw_wave_fill_in_bar(
+                    ax=ax,
+                    clip_patch=patch_obj,
+                    x_center=x,
+                    bar_width=bar_width,
+                    y_value=y,
+                    color=base_color,
+                    alpha=float(block.get("wave_alpha", 0.40)),
+                    linewidth=float(block.get("wave_linewidth", 1.0)),
+                    spacing_ratio=float(block.get("wave_spacing_ratio", 0.20)),
+                    amplitude_ratio=float(block.get("wave_amplitude_ratio", 0.08)),
+                    wavelength_ratio=float(block.get("wave_wavelength_ratio", 0.55)),
+                )
+
+            model_bar_records.append((x, y))
+
         ys_arr = np.asarray(ys, dtype=float)
-        bars = ax.bar(
-            xs,
-            ys_arr,
-            width=bar_width,
-            label=model.name,
-            color=MODEL_COLORS[model.name],
-            alpha=0.9,
-        )
-        bar_records.append((model, bars, ys_arr))
+        bar_records.append((model, model_bar_records, ys_arr))
         all_vals.extend([v for v in ys_arr if np.isfinite(v)])
 
     # Include 0.0 in range so the zero baseline is always visible.
@@ -357,8 +807,8 @@ def plot_grouped_metric_blocks(
     text_offset = span * max(0.0, float(value_text_offset_ratio))
     if text_offset == 0:
         text_offset = 1e-6
-    for model, bars, ys_arr in bar_records:
-        for i, (bar, yv) in enumerate(zip(bars, ys_arr)):
+    for model, model_bar_records, ys_arr in bar_records:
+        for i, ((x, yv), _) in enumerate(zip(model_bar_records, ys_arr)):
             if not np.isfinite(yv):
                 continue
             # block_label + model.name is the key for optional hard-coded text coloring.
@@ -372,7 +822,6 @@ def plot_grouped_metric_blocks(
             value_text = format_metric_value(float(yv)) if show_value else ""
             if value_text == "" and arrow_symbol == "":
                 continue
-            x = bar.get_x() + bar.get_width() / 2.0
             if yv >= 0:
                 y_txt = yv + text_offset
                 va = "bottom"
@@ -429,11 +878,23 @@ def plot_grouped_metric_blocks(
                     )
 
     ax.set_xticks(block_centers)
-    ax.set_xticklabels([b["label"] for b in metric_blocks], fontsize=11)
-    ax.set_ylabel(ylabel, fontsize=12)
-    ax.set_title(title, fontsize=14)
+    ax.set_xticklabels([b["label"] for b in metric_blocks], fontsize=X_TICK_FONTSIZE)
+    ax.tick_params(axis="y", labelsize=Y_TICK_FONTSIZE)
+    ax.set_ylabel(ylabel, fontsize=AXIS_LABEL_FONTSIZE)
+    ax.set_title(title, fontsize=TITLE_FONTSIZE)
     ax.grid(axis="y", linestyle="--", alpha=0.35)
-    ax.legend(frameon=False, ncol=2)
+    if legend_handles is not None:
+        labels = legend_labels if legend_labels is not None else []
+        ax.legend(
+            legend_handles,
+            labels,
+            frameon=False,
+            ncol=2,
+            fontsize=LEGEND_FONTSIZE,
+            handler_map=legend_handler_map if legend_handler_map is not None else {},
+        )
+    else:
+        ax.legend(frameon=False, ncol=2, fontsize=LEGEND_FONTSIZE)
     plt.tight_layout()
     plt.savefig(out_path, bbox_inches="tight")
     plt.close()
@@ -445,17 +906,39 @@ def plot_grouped_metric_blocks(
 
 def plot_traditional_metrics(out_path: str = "doge_traditional_metrics.svg") -> None:
     metric_blocks = [
-        {"label": "MAE", "key": "mae"},
-        {"label": "RMSE", "key": "rmse"},
+        {
+            "label": "MAE",
+            "key": "mae",
+            "hatch": TRADITIONAL_MAE_HATCH,
+            "fill": TRADITIONAL_MAE_FILL,
+            "alpha": TRADITIONAL_MAE_ALPHA,
+            "edge_linewidth": TRADITIONAL_MAE_EDGEWIDTH,
+        },
+        {
+            "label": "RMSE",
+            "key": "rmse",
+            "hatch": TRADITIONAL_RMSE_HATCH,
+            "fill": TRADITIONAL_RMSE_FILL,
+            "alpha": TRADITIONAL_RMSE_ALPHA,
+            "edge_linewidth": TRADITIONAL_RMSE_EDGEWIDTH,
+        },
     ]
+    legend_handles = [
+        _HalfSplitLegendHandle(MODEL_COLORS[m.name], mae_hatch=TRADITIONAL_MAE_HATCH)
+        for m in MODELS
+    ]
+    legend_labels = [m.name for m in MODELS]
     plot_grouped_metric_blocks(
         metric_blocks=metric_blocks,
         title="DOGE Traditional Error Metrics",
         ylabel="Metric Value",
         out_path=out_path,
-        figsize=(9, 5.5),
+        figsize=FIGSIZE_TRADITIONAL,
         y_pad_upper=Y_PAD_UPPER_TRADITIONAL,
         y_pad_lower=Y_PAD_LOWER_TRADITIONAL,
+        legend_handles=legend_handles,
+        legend_labels=legend_labels,
+        legend_handler_map={_HalfSplitLegendHandle: _HalfSplitLegendHandler()},
     )
 
 
@@ -465,18 +948,57 @@ def plot_traditional_metrics(out_path: str = "doge_traditional_metrics.svg") -> 
 
 def plot_risk_metrics(out_path: str = "doge_risk_metrics.svg") -> None:
     metric_blocks = [
-        {"label": "Pinball q10", "key": "pinball_q10"},
-        {"label": "Pinball q90", "key": "pinball_q90"},
-        {"label": "Tail Avg", "func": tail_pinball_avg},
+        {
+            "label": "Pinball q10",
+            "key": "pinball_q10",
+            "shape": RISK_Q10_SHAPE,
+            "fill": RISK_Q10_FILL,
+            "hatch": RISK_Q10_HATCH,
+            "alpha": RISK_Q10_ALPHA,
+            "edge_linewidth": RISK_Q10_EDGEWIDTH,
+            "wave_fill": RISK_Q10_WAVE_FILL,
+            "wave_alpha": RISK_Q10_WAVE_ALPHA,
+            "wave_linewidth": RISK_Q10_WAVE_LINEWIDTH,
+            "wave_spacing_ratio": RISK_Q10_WAVE_SPACING_RATIO,
+            "wave_amplitude_ratio": RISK_Q10_WAVE_AMPLITUDE_RATIO,
+            "wave_wavelength_ratio": RISK_Q10_WAVE_WAVELENGTH_RATIO,
+        },
+        {
+            "label": "Pinball q90",
+            "key": "pinball_q90",
+            "shape": RISK_Q90_SHAPE,
+            "fill": RISK_Q90_FILL,
+            "hatch": RISK_Q90_HATCH,
+            "alpha": RISK_Q90_ALPHA,
+            "edge_linewidth": RISK_Q90_EDGEWIDTH,
+            "rounding_size": RISK_Q90_ROUNDING_SIZE,
+            "wave_fill": RISK_Q90_WAVE_FILL,
+        },
+        {
+            "label": "Tail Avg",
+            "func": tail_pinball_avg,
+            "shape": RISK_TAIL_SHAPE,
+            "fill": RISK_TAIL_FILL,
+            "hatch": RISK_TAIL_HATCH,
+            "alpha": RISK_TAIL_ALPHA,
+            "edge_linewidth": RISK_TAIL_EDGEWIDTH,
+            "rounding_size": RISK_TAIL_ROUNDING_SIZE,
+            "wave_fill": RISK_TAIL_WAVE_FILL,
+        },
     ]
+    legend_handles = [_RiskTripleLegendHandle(MODEL_COLORS[m.name]) for m in MODELS]
+    legend_labels = [m.name for m in MODELS]
     plot_grouped_metric_blocks(
         metric_blocks=metric_blocks,
         title="DOGE Risk Characterization Metrics",
         ylabel="Metric Value",
         out_path=out_path,
-        figsize=(12, 5.5),
+        figsize=FIGSIZE_RISK,
         y_pad_upper=Y_PAD_UPPER_RISK,
         y_pad_lower=Y_PAD_LOWER_RISK,
+        legend_handles=legend_handles,
+        legend_labels=legend_labels,
+        legend_handler_map={_RiskTripleLegendHandle: _RiskTripleLegendHandler()},
     )
 
 
@@ -486,17 +1008,53 @@ def plot_risk_metrics(out_path: str = "doge_risk_metrics.svg") -> None:
 
 def plot_trend_metrics(out_path: str = "doge_trend_metrics.svg") -> None:
     metric_blocks = [
-        {"label": "Sign Accuracy", "key": "sign_accuracy"},
-        {"label": "Rank IC (Spearman)", "key": "rank_ic_spearman"},
+        {
+            "label": "Sign Accuracy",
+            "key": "sign_accuracy",
+            "shape": TREND_SIGN_SHAPE,
+            "fill": TREND_SIGN_FILL,
+            "hatch": TREND_SIGN_HATCH,
+            "alpha": TREND_SIGN_ALPHA,
+            "edge_linewidth": TREND_SIGN_EDGEWIDTH,
+            "rounding_size": TREND_SIGN_ROUNDING_SIZE,
+            "wave_fill": TREND_SIGN_WAVE_FILL,
+            "wave_alpha": TREND_SIGN_WAVE_ALPHA,
+            "wave_linewidth": TREND_SIGN_WAVE_LINEWIDTH,
+            "wave_spacing_ratio": TREND_SIGN_WAVE_SPACING_RATIO,
+            "wave_amplitude_ratio": TREND_SIGN_WAVE_AMPLITUDE_RATIO,
+            "wave_wavelength_ratio": TREND_SIGN_WAVE_WAVELENGTH_RATIO,
+        },
+        {
+            "label": "Rank IC (Spearman)",
+            "key": "rank_ic_spearman",
+            "shape": TREND_RANKIC_SHAPE,
+            "fill": TREND_RANKIC_FILL,
+            "hatch": TREND_RANKIC_HATCH,
+            "alpha": TREND_RANKIC_ALPHA,
+            "edge_linewidth": TREND_RANKIC_EDGEWIDTH,
+            "rounding_size": TREND_RANKIC_ROUNDING_SIZE,
+            "wave_fill": TREND_RANKIC_WAVE_FILL,
+            "wave_alpha": TREND_RANKIC_WAVE_ALPHA,
+            "wave_linewidth": TREND_RANKIC_WAVE_LINEWIDTH,
+            "wave_spacing_ratio": TREND_RANKIC_WAVE_SPACING_RATIO,
+            "wave_amplitude_ratio": TREND_RANKIC_WAVE_AMPLITUDE_RATIO,
+            "wave_wavelength_ratio": TREND_RANKIC_WAVE_WAVELENGTH_RATIO,
+        },
     ]
+    legend_handles = [_TrendSplitLegendHandle(MODEL_COLORS[m.name]) for m in MODELS]
+    legend_labels = [m.name for m in MODELS]
     plot_grouped_metric_blocks(
         metric_blocks=metric_blocks,
         title="DOGE Trend-Following Metrics",
         ylabel="Metric Value",
         out_path=out_path,
-        figsize=(10, 5.5),
+        figsize=FIGSIZE_TREND,
+        block_spacing=2.4,
         y_pad_upper=Y_PAD_UPPER_TREND,
         y_pad_lower=Y_PAD_LOWER_TREND,
+        legend_handles=legend_handles,
+        legend_labels=legend_labels,
+        legend_handler_map={_TrendSplitLegendHandle: _TrendSplitLegendHandler()},
     )
 
 
@@ -512,4 +1070,3 @@ if __name__ == "__main__":
     print(" - doge_traditional_metrics.svg")
     print(" - doge_risk_metrics.svg")
     print(" - doge_trend_metrics.svg")
-

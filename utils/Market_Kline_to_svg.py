@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Tuple
 
 import matplotlib
 import matplotlib.dates as mdates
@@ -48,10 +48,10 @@ FIGSIZE = (16, 9)
 X_LEFT_PAD_RATIO = 0.01
 X_RIGHT_PAD_RATIO = 0.08
 # Typography (hardcoded, editable)
-TITLE_FONTSIZE = 16
-AXIS_LABEL_FONTSIZE = 14
-AXIS_TICK_FONTSIZE = 14
-LEGEND_FONTSIZE = 14
+TITLE_FONTSIZE = 22
+AXIS_LABEL_FONTSIZE = 18
+AXIS_TICK_FONTSIZE = 18
+LEGEND_FONTSIZE = 16
 
 OUTPUT_DIR = Path("reports/figures/market_kline")
 
@@ -197,7 +197,32 @@ def _add_segment_labels_on_timeline(ax: plt.Axes) -> None:
         )
 
 
-def _plot_one_symbol(symbol: str, csv_path: str, output_dir: Path) -> Path:
+def _compute_logreturn_ylim(csv_path: str) -> Tuple[float, float]:
+    df = _load_market_csv(csv_path)
+    start = _to_utc_naive(TRAIN_START)
+    end = _to_utc_naive(TEST_END)
+    view = df[(df["ts"] >= start) & (df["ts"] <= end)].copy()
+    if view.empty:
+        raise ValueError(f"No rows in [{TRAIN_START}, {TEST_END}] for DOGEUSDT: {csv_path}")
+
+    view["log_return"] = np.log(view["close"]).diff().fillna(0.0)
+    y_min = float(view["log_return"].min())
+    y_max = float(view["log_return"].max())
+
+    if not np.isfinite(y_min) or not np.isfinite(y_max):
+        raise ValueError(f"Invalid DOGE logreturn range from: {csv_path}")
+    if y_min == y_max:
+        pad = 1e-6
+        return y_min - pad, y_max + pad
+    return y_min, y_max
+
+
+def _plot_one_symbol(
+    symbol: str,
+    csv_path: str,
+    output_dir: Path,
+    logreturn_ylim: Tuple[float, float] | None = None,
+) -> Path:
     df = _load_market_csv(csv_path)
 
     start = _to_utc_naive(TRAIN_START)
@@ -231,6 +256,8 @@ def _plot_one_symbol(symbol: str, csv_path: str, output_dir: Path) -> Path:
     ax2.set_xlabel("Time", fontsize=AXIS_LABEL_FONTSIZE)
     ax2.tick_params(axis="both", labelsize=AXIS_TICK_FONTSIZE)
     ax2.grid(True, linestyle="--", alpha=0.25)
+    if logreturn_ylim is not None:
+        ax2.set_ylim(*logreturn_ylim)
 
     ax2.xaxis.set_major_locator(mdates.AutoDateLocator())
     ax2.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m"))
@@ -265,9 +292,18 @@ def _plot_one_symbol(symbol: str, csv_path: str, output_dir: Path) -> Path:
 # -------------------------------------------------------------------
 
 def main() -> None:
+    doge_ylim = _compute_logreturn_ylim(MARKET_CSV_PATHS["DOGEUSDT"])
+
     generated: list[Path] = []
     for symbol, csv_path in MARKET_CSV_PATHS.items():
-        generated.append(_plot_one_symbol(symbol=symbol, csv_path=csv_path, output_dir=OUTPUT_DIR))
+        generated.append(
+            _plot_one_symbol(
+                symbol=symbol,
+                csv_path=csv_path,
+                output_dir=OUTPUT_DIR,
+                logreturn_ylim=doge_ylim,
+            )
+        )
 
     print(f"[DONE] generated {len(generated)} SVG files:")
     for p in generated:

@@ -12,6 +12,21 @@ import matplotlib.pyplot as plt
 from matplotlib.colors import to_rgba
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes, mark_inset
 
+# -------------------------------------------------------------------
+# Plot style (hardcoded, editable)
+# -------------------------------------------------------------------
+PRED_LINEWIDTH = 5
+REAL_LINEWIDTH = 5
+INSET_PRED_LINEWIDTH = 2.3
+INSET_REAL_LINEWIDTH = 1.9
+
+BAND_COLOR = "lightblue"
+BAND_LAYERS = 32
+BAND_ALPHA_CENTER = 0.92
+BAND_ALPHA_EDGE = 0.32
+BAND_EDGE_LINEWIDTH = 1.4
+BAND_EDGE_ALPHA = 0.92
+
 
 def _decode_ts_ns(v: object) -> pd.DatetimeIndex:
     arr = np.asarray(v)
@@ -70,13 +85,13 @@ def _fill_band_gradient_around_center(
     band_lo: np.ndarray,
     band_hi: np.ndarray,
     label: str = "Pred Band",
-    color: str = "lightblue",
-    layers: int = 20,
-    alpha_center: float = 0.8,
-    alpha_edge: float = 0.2,
+    color: str = BAND_COLOR,
+    layers: int = BAND_LAYERS,
+    alpha_center: float = BAND_ALPHA_CENTER,
+    alpha_edge: float = BAND_ALPHA_EDGE,
     draw_edges: bool = True,
-    edge_linewidth: float = 1.0,
-    edge_alpha: float = 0.85,
+    edge_linewidth: float = BAND_EDGE_LINEWIDTH,
+    edge_alpha: float = BAND_EDGE_ALPHA,
 ) -> None:
     """
     Draw uncertainty band with strongest opacity near a time-varying center line,
@@ -158,8 +173,8 @@ def _add_inset(
         loc=inset_loc,
         borderpad=float(inset_borderpad),
     )
-    axins.plot(xz, pz, linewidth=1.6, alpha=0.9, color="tab:blue")
-    axins.plot(xz, rz, linewidth=1.3, alpha=0.85, color="tab:orange")
+    axins.plot(xz, pz, linewidth=INSET_PRED_LINEWIDTH, alpha=0.9, color="tab:blue")
+    axins.plot(xz, rz, linewidth=INSET_REAL_LINEWIDTH, alpha=0.85, color="tab:orange")
     if bz_lo is not None and bz_hi is not None:
         _fill_band_gradient_around_center(
             axins,
@@ -168,7 +183,7 @@ def _add_inset(
             band_lo=bz_lo,
             band_hi=bz_hi,
             label="Pred Band",
-            color="lightblue",
+            color=BAND_COLOR,
         )
     axins.set_xlim(xz[0], xz[-1])
     axins.set_ylim(y_min - pad, y_max + pad)
@@ -309,26 +324,26 @@ def main() -> None:
     parser.add_argument(
         "--title-fontsize",
         type=float,
-        default=15,
-        help="Title font size. Default 15.",
+        default=26,
+        help="Title font size. Default 26.",
     )
     parser.add_argument(
         "--axis-label-fontsize",
         type=float,
-        default=13,
-        help="Axis label font size. Default 13.",
+        default=22,
+        help="Axis label font size. Default 22.",
     )
     parser.add_argument(
         "--tick-fontsize",
         type=float,
-        default=12,
-        help="Tick font size. Default 12.",
+        default=18,
+        help="Tick font size. Default 18.",
     )
     parser.add_argument(
         "--legend-fontsize",
         type=float,
-        default=12,
-        help="Legend font size. Default 12.",
+        default=16,
+        help="Legend font size. Default 16.",
     )
     args = parser.parse_args()
 
@@ -426,8 +441,8 @@ def convert_one_with_options(
         ax1 = plt.subplot(1, 1, 1)
         ax2 = None
 
-    ax1.plot(x, pred, label="Pred Next Return", linewidth=1.8, alpha=0.9, color="tab:blue")
-    ax1.plot(x, real, label="Real Next Return (GT)", linewidth=1.4, alpha=0.85, color="tab:orange")
+    ax1.plot(x, pred, label="Pred Next Return", linewidth=PRED_LINEWIDTH, alpha=0.9, color="tab:blue")
+    ax1.plot(x, real, label="Real Next Return (GT)", linewidth=REAL_LINEWIDTH, alpha=0.85, color="tab:orange")
     if has_band:
         _fill_band_gradient_around_center(
             ax1,
@@ -436,7 +451,7 @@ def convert_one_with_options(
             band_lo=band_lo,
             band_hi=band_hi,
             label="Pred Band q10~q90",
-            color="lightblue",
+            color=BAND_COLOR,
         )
     if with_inset:
         # Keep extra vertical room so the inset doesn't visually cover the main signal too much.
